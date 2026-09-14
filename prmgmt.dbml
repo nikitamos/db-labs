@@ -1,0 +1,106 @@
+Table users {
+  id integer [primary key]
+  username varchar [not null]
+  password_hash varchar [not null]
+}
+
+Table roles {
+  id integer [primary key]
+  name varchar(16) [not null]
+}
+ref: users.id <> roles.id
+
+Table user_roles {
+  user_id integer [ref: > users.id]
+  role_id integer [ref: > roles.id]
+}
+
+enum audit_log.Action {
+  Create
+  Update
+  Delete
+}
+
+Table audit_log {
+  id integer [primary key]
+  timestamp datetime [not null]
+  user_id integer [ref: > users.id]
+  table_name varchar(48) [not null]
+  entity_id integer [not null]
+  action Action [not null]
+  description varchar(256) [not null]
+}
+
+Table sessions {
+  id integer [primary key]
+  user_id integer [not null, ref: > users.id]
+  auth_token varchar(1024) [not null]
+  valid_until datetime [not null]
+}
+
+Table projects {
+    id integer [pk]
+    name varchar(64)
+    description varchar(512)
+    start_date datetime
+    deadline datetime
+}
+
+Table project_members {
+    id integer [pk]
+    user_id integer [ref: > users.id]
+    project_id integer [ref: > projects.id]
+    project_role varchar(32)
+}
+
+Table tasks {
+    id integer [pk]
+    name varchar(64)
+    description varchar(1024)
+    deadline datetime
+    status_id integer [ref: > statuses.id]
+    project_id integer [ref: > projects.id]
+}
+
+Table tasks_dependencies {
+    id integer [pk]
+    dependent_id integer [ref: > tasks.id]
+    dependency_id integer [ref: > tasks.id]
+}
+
+Table task_assignees {
+    id integer [pk]
+    task_id integer [ref: > tasks.id]
+    assignee_id integer [ref: > users.id]
+}
+
+Table task_categories {
+    id integer [pk]
+    task_id integer [ref: > tasks.id]
+    category_id integer [ref: > categories.id]
+}
+
+Table categories { 
+    id integer [pk]
+    name varchar(24)
+    badge_color integer
+    urgency integer
+}
+
+Table statuses {
+    id integer [pk]
+    name varchar(24)
+    color integer
+    allow_dependent bool
+    pending bool
+}
+
+Table comments {
+    id integer [pk]
+    task_id integer [ref: > tasks.id]
+    author_id integer [ref: > users.id]
+    title varchar(48)
+    body varchar(512)
+    parent_id integer [ref: > comments.id]
+}
+
