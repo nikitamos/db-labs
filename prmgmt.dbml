@@ -1,8 +1,17 @@
 Table users {
   id integer [primary key]
-  username varchar(32) [not null]
+  username varchar(32) [not null, unique]
   password_hash char(60) [not null]
-  email varchar(254) [not null]
+  email varchar(254) [not null, unique]
+  profile_id integer [not null, ref: > profiles.id]
+}
+
+Table profiles {
+  id integer [pk]
+  first_name varchar(256) [not null]
+  second_name varchar(256) [not null]
+  bio text
+  user_id integer [not null, ref: > users.id]
 }
 
 Table roles {
@@ -45,7 +54,7 @@ Table audit_log {
   table_name varchar(48) [not null]
   entity_id integer [not null]
   action Action [not null]
-  description varchar(256) [not null]
+  description varchar(1024) [not null]
 }
 
 Table sessions {
