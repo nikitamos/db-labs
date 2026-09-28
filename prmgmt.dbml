@@ -21,7 +21,6 @@ Table permissions {
   name varchar(192) [not null]
 }
 
-ref: users.id <> roles.id
 
 Table user_roles {
   user_id integer [not null, ref: > users.id]
@@ -61,6 +60,7 @@ Table projects {
 }
 
 enum project_members.ProjectRole {
+  Observer
   Manager
   Worker
 }
@@ -80,6 +80,7 @@ Table tasks {
     status_id integer [not null, ref: > statuses.id]
     project_id integer [not null, ref: > projects.id]
     assignee_id integer [not null, ref: > users.id]
+    estimated_time integer [not null]
 }
 
 Table tasks_dependencies {
@@ -87,12 +88,6 @@ Table tasks_dependencies {
     dependent_id integer [not null, ref: > tasks.id]
     dependency_id integer [not null, ref: > tasks.id]
 }
-
-/*Table task_assignees {
-    id integer [pk]
-    task_id integer [not null, ref: > tasks.id]
-    assignee_id integer [not null, ref: > users.id]
-}*/
 
 Table task_categories {
     id integer [pk]
@@ -130,4 +125,3 @@ Table discussion_posts {
     body varchar(512) [not null]
     parent_id integer [ref: > discussion_posts.id]
 }
-
