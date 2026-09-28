@@ -11,9 +11,11 @@ Table roles {
 }
 
 table role_permissions {
-  id integer [pk]
   role_id integer [not null, ref: > roles.id]
   permission integer [not null, ref: > permissions.id]
+  indexes {
+    (role_id, permission) [pk]
+  }
 }
 
 Table permissions {
@@ -25,6 +27,9 @@ Table permissions {
 Table user_roles {
   user_id integer [not null, ref: > users.id]
   role_id integer [ref: > roles.id]
+  indexes {
+    (user_id, role_id) [pk]
+  }
 }
 
 enum audit_log.Action {
@@ -66,10 +71,12 @@ enum project_members.ProjectRole {
 }
 
 Table project_members {
-    id integer [pk]
     user_id integer [ref: > users.id]
     project_id integer [ref: > projects.id]
     project_role ProjectRole
+    indexes {
+      (user_id, project_id) [pk]
+    }
 }
 
 Table tasks {
@@ -84,15 +91,19 @@ Table tasks {
 }
 
 Table tasks_dependencies {
-    id integer [pk]
     dependent_id integer [not null, ref: > tasks.id]
     dependency_id integer [not null, ref: > tasks.id]
+    indexes {
+      (dependent_id, dependency_id) [pk]
+    }
 }
 
 Table task_categories {
-    id integer [pk]
     task_id integer [not null, ref: > tasks.id]
     category_id integer [not null, ref: > categories.id]
+    indexes {
+      (task_id, category_id) [pk]
+    }
 }
 
 Table categories { 
