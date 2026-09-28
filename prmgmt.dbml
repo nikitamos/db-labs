@@ -1,17 +1,30 @@
 Table users {
   id integer [primary key]
-  username varchar [not null]
-  password_hash varchar [not null]
+  username varchar(32) [not null]
+  password_hash char(60) [not null]
+  email varchar(254) [not null]
 }
 
 Table roles {
   id integer [primary key]
-  name varchar(16) [not null]
+  name varchar(32) [not null]
 }
+
+table role_permissions {
+  id integer [pk]
+  role_id integer [not null, ref: > roles.id]
+  permission integer [not null, ref: > permissions.id]
+}
+
+Table permissions {
+  id integer [primary key]
+  name varchar(192) [not null]
+}
+
 ref: users.id <> roles.id
 
 Table user_roles {
-  user_id integer [ref: > users.id]
+  user_id integer [not null, ref: > users.id]
   role_id integer [ref: > roles.id]
 }
 
@@ -39,68 +52,82 @@ Table sessions {
 }
 
 Table projects {
-    id integer [pk]
-    name varchar(64)
+    id integer [not null, pk]
+    manager_id integer [not null, ref: > users.id]
+    name varchar(64) [not null]
     description varchar(512)
-    start_date datetime
-    deadline datetime
+    start_time timestamp
+    deadline timestamp
+}
+
+enum project_members.ProjectRole {
+  Manager
+  Worker
 }
 
 Table project_members {
     id integer [pk]
     user_id integer [ref: > users.id]
     project_id integer [ref: > projects.id]
-    project_role varchar(32)
+    project_role ProjectRole
 }
 
 Table tasks {
     id integer [pk]
-    name varchar(64)
-    description varchar(1024)
-    deadline datetime
-    status_id integer [ref: > statuses.id]
-    project_id integer [ref: > projects.id]
+    name varchar(64) [not null]
+    description varchar(1024) [not null]
+    deadline timestamp [not null]
+    status_id integer [not null, ref: > statuses.id]
+    project_id integer [not null, ref: > projects.id]
+    assignee_id integer [not null, ref: > users.id]
 }
 
 Table tasks_dependencies {
     id integer [pk]
-    dependent_id integer [ref: > tasks.id]
-    dependency_id integer [ref: > tasks.id]
+    dependent_id integer [not null, ref: > tasks.id]
+    dependency_id integer [not null, ref: > tasks.id]
 }
 
-Table task_assignees {
+/*Table task_assignees {
     id integer [pk]
-    task_id integer [ref: > tasks.id]
-    assignee_id integer [ref: > users.id]
-}
+    task_id integer [not null, ref: > tasks.id]
+    assignee_id integer [not null, ref: > users.id]
+}*/
 
 Table task_categories {
     id integer [pk]
-    task_id integer [ref: > tasks.id]
-    category_id integer [ref: > categories.id]
+    task_id integer [not null, ref: > tasks.id]
+    category_id integer [not null, ref: > categories.id]
 }
 
 Table categories { 
     id integer [pk]
-    name varchar(24)
+    name varchar(24) [not null]
     badge_color integer
-    urgency integer
+    urgency integer 
+    checks {
+      `urgency > 0`
+      `badge_color < (1 << 24)`
+    }
 }
 
 Table statuses {
     id integer [pk]
-    name varchar(24)
-    color integer
-    allow_dependent bool
+    name varchar(24) [not null]
+    color integer [not null, unique]
+    ready bool
     pending bool
+    checks {
+      `color < (1 << 24)`
+    }
 }
 
-Table comments {
+Table discussion_posts {
     id integer [pk]
     task_id integer [ref: > tasks.id]
     author_id integer [ref: > users.id]
-    title varchar(48)
-    body varchar(512)
-    parent_id integer [ref: > comments.id]
+    title varchar(48) [not null]
+    body varchar(512) [not null]
+    parent_id integer [ref: > discussion_posts.id]
 }
 
