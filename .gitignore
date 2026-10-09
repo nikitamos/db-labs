@@ -1,2 +1,4 @@
 *.dbdiagram
 app/target
+.conn
+.sqlx

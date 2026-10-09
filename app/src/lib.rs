@@ -8,13 +8,14 @@ use tracing::error;
 use crate::config::AppConfig;
 
 pub mod config;
+pub mod entities;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Pool<Postgres>,
 }
 
-static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+static MIGRATOR: Migrator = sqlx::migrate!("./sql/migrations");
 impl AppState {
     pub async fn from_config(cfg: AppConfig) -> Self {
         let pool = Pool::<Postgres>::connect(&cfg.app_db_uri).await.unwrap();
