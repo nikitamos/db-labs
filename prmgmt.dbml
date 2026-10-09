@@ -11,7 +11,7 @@ Table profiles {
   first_name varchar(256) [not null]
   second_name varchar(256) [not null]
   bio text
-  user_id integer [not null, ref: > users.id]
+  user_id integer [not null, unique, ref: > users.id]
 }
 
 Table roles {
@@ -60,8 +60,7 @@ Table audit_log {
 Table sessions {
   id integer [primary key]
   user_id integer [not null, ref: > users.id]
-  auth_token varchar(1024) [not null]
-  valid_until datetime [not null]
+  auth_token varchar(4096) [not null]
 }
 
 Table projects {
