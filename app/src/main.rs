@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use app::{AppState, config::AppConfig};
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
@@ -41,8 +41,8 @@ async fn main() {
         .unwrap();
 
     let state = AppState::from_config(config).await;
-    state.drop_db_content().await.unwrap();
     state.migrate_db().await.unwrap();
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/all_env", get(all_env))

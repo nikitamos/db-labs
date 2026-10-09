@@ -1,10 +1,9 @@
 use sqlx::{
-    Pool, Postgres, migrate::{MigrateError, Migrator}, postgres::PgQueryResult,
+    Pool, Postgres,
+    migrate::{MigrateError, Migrator},
+    postgres::PgQueryResult,
 };
-use tracing::{
-    error,
-    instrument::{WithDispatch, WithSubscriber},
-};
+use tracing::error;
 
 use crate::config::AppConfig;
 
@@ -30,9 +29,11 @@ impl AppState {
     }
     pub async fn drop_db_content(&self) -> sqlx::Result<PgQueryResult> {
         sqlx::raw_sql(
-        r#"DROP SCHEMA public CASCADE;
+            r#"DROP SCHEMA public CASCADE;
            CREATE SCHEMA public;
         "#,
-        ).execute(&self.db).await
+        )
+        .execute(&self.db)
+        .await
     }
 }
