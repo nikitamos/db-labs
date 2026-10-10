@@ -4,35 +4,35 @@ use axum::extract::{FromRef, Path};
 
 use crate::AppState;
 
-// #[autoendpoint::endpoints(error=crate::HttpError)]
+#[autoendpoint::endpoints(error=crate::HttpError)]
 pub trait UserRepository {
-    // #[endpoint(ok=i32)]
-    async fn xxxx(self, /*#[extract(Path)]*/ id: i32) -> crate::Result<i32>;
+    #[endpoint(ok=String)]
+    async fn xxxx(self, #[extract(Path)] id: i32) -> crate::Result<String>;
 }
 
 #[derive(Clone)]
 pub struct TestUserRepo;
 impl UserRepository for TestUserRepo {
-    async fn xxxx(self, id: i32) -> crate::Result<i32> {
+    async fn xxxx(self, id: i32) -> crate::Result<String> {
         tokio::time::sleep(Duration::from_millis(852)).await;
-        return Ok(9*id);
+        return Ok((9*id).to_string());
     }
 }
 
-// fn x() {
-//     let x = UserRepositoryEndpoints::;
+// // fn x() {
+// //     let x = UserRepositoryEndpoints::;
+// // }
+// #[derive(Default)]
+// pub struct UserRepositoryEndpoints<Repo: UserRepository>(
+//     core::marker::PhantomData<Repo>,
+// );
+// impl<Repo: UserRepository> UserRepositoryEndpoints<Repo>
+// {
+//     pub async fn xxxx(
+//         axum::extract::State(state): axum::extract::State<Repo>,
+//         Path(id): Path<i32>,
+//     ) -> Result<String, crate::HttpError> {
+//         let repo = state;
+//         Ok(i32::from(repo.xxxx(id).await?).to_string())
+//     }
 // }
-#[derive(Default)]
-pub struct UserRepositoryEndpoints<Repo: UserRepository>(
-    core::marker::PhantomData<Repo>,
-);
-impl<Repo: UserRepository> UserRepositoryEndpoints<Repo>
-{
-    pub async fn xxxx(
-        axum::extract::State(state): axum::extract::State<Repo>,
-        Path(id): Path<i32>,
-    ) -> Result<String, crate::HttpError> {
-        let repo = state;
-        Ok(i32::from(repo.xxxx(id).await?).to_string())
-    }
-}

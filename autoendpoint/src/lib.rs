@@ -99,10 +99,9 @@ pub fn endpoints(
         #target_trait
 
         #[derive(Default)]
-        pub struct #struct_name<S, Repo: #trait_ident>(core::marker::PhantomData<S>, core::marker::PhantomData<Repo>)
-        where Repo: axum::extract::FromRef<S>;
+        pub struct #struct_name<Repo: #trait_ident>(core::marker::PhantomData<Repo>);
 
-        impl <S, Repo: #trait_ident> #struct_name<S, Repo> where Repo: axum::extract::FromRef<S> {
+        impl <Repo: #trait_ident> #struct_name<Repo> {
             #(#functions)*
         }
     };
@@ -179,8 +178,7 @@ fn process_fn(
     } else {quote! {}};
 
     let sig = quote! {
-        pub async fn #fn_name(axum::extract::State(state): axum::extract::State<S>, #(#endpoint_args),*) -> Result<#ok_type, #error_type> {
-            let repo = Repo::from_ref(&state);
+        pub async fn #fn_name(axum::extract::State(repo): axum::extract::State<Repo>, #(#endpoint_args),*) -> Result<#ok_type, #error_type> {
             Ok(#ok_type ::from(
                 repo.#fn_name(#(#endpoint_arg_names),*)#t_await?
             ))
