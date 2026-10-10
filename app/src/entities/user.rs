@@ -1,24 +1,38 @@
-use sqlx::PgPool;
+use serde::{Deserialize, Serialize};
+use sqlx::{Executor, PgPool};
 
 use crate::entities::{Page, PageRequest};
 
-#[derive(sqlx::FromRow, Debug)]
+#[derive(sqlx::FromRow, Debug, Deserialize, Serialize)]
 pub struct User {
     id: Option<i32>,
     username: String,
-    password_hash: String,
+    password_hash: Option<String>,
     email: String,
     first_name: String,
     second_name: String,
     bio: Option<String>,
 }
 
+// #[endpoints]
+// TODO: Hard-code list of correct signatures and
+// automatic endpoints for:
+
+// create       - post /{name}
+// fetch_by_id  - get /{name}/{id}
+// fetch_list   - get /{name}?page=XX&offset=YY
+// delete_by_id - delete /{name}/{id}; post /{name}/{id}/delete
+// save_changes - put /{name}/{id};
+
 impl User {
-    pub async fn create(&mut self, db: &PgPool) -> sqlx::Result<()> {
+    pub async fn create(
+        self,
+        db: impl Executor<'_, Database = sqlx::Postgres>,
+    ) -> crate::Result<User> {
         if self.id.is_some() {
             // return error
         }
-        *self = sqlx::query_as!(
+        Ok(sqlx::query_as!(
             User,
             r#"
              INSERT INTO users (username, password_hash, email, first_name, second_name, bio)
@@ -33,11 +47,10 @@ impl User {
             self.bio
         )
         .fetch_one(db)
-        .await?;
-        Ok(())
+        .await?)
     }
-    pub async fn fetch_by_id(id: i32, db: &PgPool) -> sqlx::Result<Self> {
-        sqlx::query_as!(
+    pub async fn fetch_by_id(id: i32, db: &PgPool) -> crate::Result<Self> {
+        Ok(sqlx::query_as!(
             User,
             r#"
               SELECT * FROM users
@@ -46,16 +59,35 @@ impl User {
             id
         )
         .fetch_one(db)
-        .await
+        .await?)
     }
-    pub async fn delete(self, db: &PgPool) -> sqlx::Result<bool> {
-        sqlx::query(r#"DELETE FROM users WHERE id=$1"#)
-            .bind(self.id)
+    pub async fn fetch_by_username(username: impl AsRef<str>, db: &PgPool) -> crate::Result<Self> {
+        Ok(sqlx::query_as!(
+            User,
+            r#"
+                    SELECT * FROM users
+                    WHERE username = $1
+                "#,
+            username.as_ref()
+        )
+        .fetch_one(db)
+        .await?)
+    }
+    pub async fn delete(self, db: &PgPool) -> crate::Result<bool> {
+        if let Some(id) = self.id {
+            Self::delete_by_id(id, db).await
+        } else {
+            Ok(false)
+        }
+    }
+    pub async fn delete_by_id(id: i32, db: &PgPool) -> crate::Result<bool> {
+        Ok(sqlx::query(r#"DELETE FROM users WHERE id=$1"#)
+            .bind(id)
             .execute(db)
             .await
-            .map(|a| a.rows_affected() != 0)
+            .map(|a| a.rows_affected() != 0)?)
     }
-    pub async fn save_changes(&self, db: &PgPool) -> sqlx::Result<()> {
+    pub async fn save_changes(&self, db: &PgPool) -> crate::Result<()> {
         sqlx::query!(
             r#"
               UPDATE users
@@ -79,7 +111,7 @@ impl User {
         .await?;
         Ok(())
     }
-    pub async fn fetch_list(db: &PgPool, page: PageRequest) -> sqlx::Result<Page<Self>> {
+    pub async fn fetch_list(db: &PgPool, page: PageRequest) -> crate::Result<Page<Self>> {
         let x = sqlx::query_as!(
             User,
             r#"
@@ -103,4 +135,5 @@ impl User {
             })
         }
     }
+    // pub async fn get_roles()
 }

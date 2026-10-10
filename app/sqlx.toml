@@ -1,2 +1,5 @@
 [common]
 database-url-var = "APP_DB_URI"
+
+[migrate]
+migrations-dir = "sql/migrations"

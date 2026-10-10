@@ -1,4 +1,4 @@
 *.dbdiagram
-app/target
+target
 .conn
 .sqlx

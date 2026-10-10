@@ -1,4 +1,5 @@
 pub mod user;
+pub mod role;
 
 #[derive(Debug)]
 pub struct PageRequest<Oft: Ord + Default = i32> {
