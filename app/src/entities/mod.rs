@@ -78,7 +78,7 @@ impl<T, Oft: Ord + Default> Page<T, Oft> {
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(rename_all = "lowercase")]
+#[sqlx(type_name="ProjectRole", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectRole {
     Observer,

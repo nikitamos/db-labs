@@ -1,5 +1,5 @@
 use parking_lot::Mutex;
-use std::{fmt::format, sync::Arc};
+use std::{fmt::{Display, format}, sync::Arc};
 
 use axum::{
     Json,
@@ -9,11 +9,9 @@ use axum::{
 };
 use serde::Serialize;
 use sqlx::{
-    Pool, Postgres,
-    migrate::{MigrateError, Migrator},
-    postgres::{PgConnectOptions, PgDatabaseError, PgQueryResult},
+    Database, Pool, Postgres, migrate::{MigrateError, Migrator}, postgres::{PgConnectOptions, PgDatabaseError, PgQueryResult},
 };
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::{
     config::AppConfig,
@@ -43,6 +41,8 @@ pub struct AppState {
 pub enum Error {
     #[error("sql query failed: {0}")]
     Sqlx(#[from] sqlx::Error),
+    #[error("Requested item does not exist")]
+    NotFound
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -112,6 +112,7 @@ impl From<Error> for HttpError {
     fn from(value: Error) -> Self {
         match value {
             Error::Sqlx(e) => Self::from_sqlx_error(e),
+            Error::NotFound => Self::new(StatusCode::NOT_FOUND, "requested item does not exist")
         }
     }
 }
@@ -144,4 +145,18 @@ where
     S: serde::Serializer,
 {
     serializer.serialize_u16(status.as_u16())
+}
+
+pub trait ResultExtensions<E> {
+    fn report_noop_delete(self, context: impl Display) -> Result<(), E>;
+}
+
+impl<E> ResultExtensions<E> for Result<PgQueryResult, E> {
+    fn report_noop_delete(self, context: impl Display) -> Result<(), E> {
+        self.map(|qr|
+            if qr.rows_affected() == 0 {
+                warn!(%context, "attempt to remove non-existent item");
+            }
+        )
+    }
 }

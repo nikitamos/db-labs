@@ -55,13 +55,9 @@ pub trait ProjectService {
     }
 
     #[endpoint(ok=Unit)]
-    async fn remove_member(&self, #[extract(Path)] dto: RemoveMemberDto) -> crate::Result<()> {
-        todo!()
-    }
+    async fn remove_member(&self, #[extract(Path)] dto: RemoveMemberDto) -> crate::Result<()>;
 
-    async fn get_role(&self, project_id: i32, user_id: i32) -> crate::Result<Option<ProjectRole>> {
-        todo!()
-    }
+    async fn get_role(&self, project_id: i32, user_id: i32) -> crate::Result<Option<ProjectRole>>;
 }
 
 pub struct SqlxProjectService {
@@ -228,6 +224,49 @@ impl ProjectService for SqlxProjectService {
         let project = Self::fetch_no_nav(&mut *tx, id).await?;
         tx.commit().await?;
         Ok(project)
+    }
+    async fn add_member(&self, id: i32, member: AddMemberDro) -> crate::Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO project_members (user_id, project_id, project_role)
+            VALUES ($1, $2, $3)
+            "#,
+            member.member_id,
+            id,
+            member.role as ProjectRole
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn remove_member(&self, dto: RemoveMemberDto) -> crate::Result<()> {
+        sqlx::query!(
+            r#"
+            DELETE FROM project_members
+            WHERE project_id = $1 AND user_id = $2
+            "#,
+            dto.project_id,
+            dto.user_id
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn get_role(&self, project_id: i32, user_id: i32) -> crate::Result<Option<ProjectRole>> {
+        let role = sqlx::query_scalar!(
+            r#"
+            SELECT project_role AS "project_role!: ProjectRole"
+            FROM project_members
+            WHERE project_id = $1 AND user_id = $2
+            "#,
+            project_id,
+            user_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(role)
     }
 }
 

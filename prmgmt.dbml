@@ -41,6 +41,7 @@ enum audit_log.Action {
   Delete
 }
 
+// triggers
 Table audit_log {
   id integer [primary key]
   timestamp datetime [not null]
@@ -51,12 +52,14 @@ Table audit_log {
   description varchar(1024) [not null]
 }
 
+// auth
 Table sessions {
   id integer [primary key]
   user_id integer [not null, ref: > users.id]
   auth_token varchar(4096) [not null]
 }
 
+// done
 Table projects {
     id integer [not null, pk]
     manager_id integer [not null, ref: > users.id]
@@ -72,6 +75,7 @@ enum project_members.ProjectRole {
   Worker
 }
 
+// determined
 Table project_members {
     user_id integer [ref: > users.id]
     project_id integer [ref: > projects.id]
@@ -81,6 +85,12 @@ Table project_members {
     }
 }
 
+// todo:
+// CRUD
+// replace assignee
+// dependencies
+// assign, remove category
+// assign status
 Table tasks {
     id integer [pk]
     name varchar(64) [not null]
@@ -92,6 +102,7 @@ Table tasks {
     estimated_time integer [not null]
 }
 
+// handled by task service
 Table tasks_dependencies {
     dependent_id integer [not null, ref: > tasks.id]
     dependency_id integer [not null, ref: > tasks.id]
@@ -100,6 +111,7 @@ Table tasks_dependencies {
     }
 }
 
+// handled by task service
 Table task_categories {
     task_id integer [not null, ref: > tasks.id]
     category_id integer [not null, ref: > categories.id]
@@ -108,6 +120,8 @@ Table task_categories {
     }
 }
 
+
+// markup done
 Table categories { 
     id integer [pk]
     name varchar(24) [not null]
@@ -119,6 +133,7 @@ Table categories {
     }
 }
 
+// crud
 Table statuses {
     id integer [pk]
     name varchar(24) [not null]
@@ -130,6 +145,7 @@ Table statuses {
     }
 }
 
+// create, view, filter
 Table discussion_posts {
     id integer [pk]
     task_id integer [ref: > tasks.id]
