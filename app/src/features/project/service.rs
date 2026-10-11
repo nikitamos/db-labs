@@ -48,8 +48,8 @@ pub trait ProjectService {
     #[endpoint(ok=Unit)]
     async fn add_member(
         &self,
-        #[extract(Path)] id: i32,
-        #[extract(Json)] member: AddMemberDro,
+        #[extract(Path)] _id: i32,
+        #[extract(Json)] _member: AddMemberDro,
     ) -> crate::Result<()> {
         todo!()
     }

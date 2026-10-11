@@ -1,15 +1,10 @@
 use std::borrow::Cow;
 
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::{ToTokens, quote};
+use quote::quote;
 use syn::{
-    Attribute, Error, Expr, ExprAssign, FnArg, ImplItemFn, ItemImpl, ItemTrait, Meta, Pat, Path,
-    Receiver, ReceiverKind, Signature, Token, TraitItemFn, Type, Visibility,
-    parse::{End, Parse},
-    parse_macro_input,
-    punctuated::Punctuated,
-    spanned::Spanned,
-    token::Impl,
+    Attribute, Error, FnArg, ItemTrait, Meta, Pat, ReceiverKind, Token, TraitItemFn, Type,
+    parse::Parse, parse_macro_input, spanned::Spanned,
 };
 
 #[derive(Debug, Default, Clone)]

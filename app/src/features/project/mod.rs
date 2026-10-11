@@ -1,4 +1,4 @@
-use crate::entities::{ProjectRole, project::Project, task::Task};
+use crate::entities::ProjectRole;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 

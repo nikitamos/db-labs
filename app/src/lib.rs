@@ -1,27 +1,27 @@
 use parking_lot::Mutex;
 use std::{
-    fmt::{Display, format},
+    fmt::Display,
     sync::Arc,
 };
 
 use axum::{
     Json,
     extract::FromRef,
-    http::{Response, StatusCode},
+    http::StatusCode,
     response::IntoResponse,
 };
 use serde::Serialize;
 use sqlx::{
-    Database, Pool, Postgres,
+    Pool, Postgres,
     migrate::{MigrateError, Migrator},
-    postgres::{PgConnectOptions, PgDatabaseError, PgQueryResult},
+    postgres::PgQueryResult,
 };
 use tracing::{error, warn};
 
 use crate::{
     config::AppConfig,
     features::{
-        category::service::{CategoryService, SqlxCategoryService},
+        category::service::SqlxCategoryService,
         maintenance::HealthStatus,
         user::repository::TestUserRepo,
     },

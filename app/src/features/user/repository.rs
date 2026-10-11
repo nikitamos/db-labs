@@ -1,8 +1,7 @@
 use std::time::Duration;
 
-use axum::extract::{FromRef, Path};
+use axum::extract::Path;
 
-use crate::AppState;
 
 #[autoendpoint::endpoints(error=crate::HttpError)]
 pub trait UserRepository {
@@ -15,7 +14,7 @@ pub struct TestUserRepo;
 impl UserRepository for TestUserRepo {
     async fn xxxx(self, id: i32) -> crate::Result<String> {
         tokio::time::sleep(Duration::from_millis(852)).await;
-        return Ok((9*id).to_string());
+        Ok((9*id).to_string())
     }
 }
 
