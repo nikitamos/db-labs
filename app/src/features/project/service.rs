@@ -8,6 +8,8 @@ use crate::entities::task::Task;
 use crate::features::project::AddMemberDro;
 use crate::features::project::RemoveMemberDto;
 use axum::extract::{Json, Path, Query};
+use axum::routing::delete;
+use axum::routing::post;
 use chrono::DateTime;
 use sqlx::PgExecutor;
 use sqlx::PgPool;
@@ -15,55 +17,57 @@ use sqlx::PgPool;
 type Unit = ();
 
 #[autoendpoint::endpoints(error=crate::HttpError)]
-pub trait ProjectService {
-    #[endpoint(ok=Project)]
+#[async_trait::async_trait]
+pub trait ProjectService: Clone + Send + Sync + 'static {
+    #[endpoint(ok=Json::<Project>,path="/{id}")]
     async fn get_by_id(&self, #[extract(Path)] id: i32) -> crate::Result<Project>;
 
-    #[endpoint(ok=Page::<Task>)]
+    #[endpoint(ok=Json::<Page::<Task>>,path="/{id}/tasks")]
     async fn project_tasks(
         &self,
         #[extract(Path)] id: i32,
         #[extract(Query)] pagination: PageRequest,
     ) -> crate::Result<Page<Task>>;
 
-    #[endpoint(ok=Page::<Project>)]
+    #[endpoint(ok=Json::<Page::<Project>>,path="/")]
     async fn get_list(
         &self,
         #[extract(Query)] pagination: PageRequest,
     ) -> crate::Result<Page<Project>>;
 
-    #[endpoint(ok=Project)]
+    #[endpoint(ok=Json::<Project>,path="/",method=post)]
     async fn create_project(
         &self,
         #[extract(Json)] body: CreateProjectDto,
     ) -> crate::Result<Project>;
 
-    #[endpoint(ok=Project)]
+    #[endpoint(ok=Json::<Project>,path="/{id}",method=post)]
     async fn update_project(
         &self,
         #[extract(Path)] id: i32,
         #[extract(Json)] body: UpdateProjectDto,
     ) -> crate::Result<Project>;
+    // delete?
 
-    #[endpoint(ok=Unit)]
+    #[endpoint(ok=Unit,path="/{id}/member",method=post)]
     async fn add_member(
         &self,
-        #[extract(Path)] _id: i32,
-        #[extract(Json)] _member: AddMemberDro,
-    ) -> crate::Result<()> {
-        todo!()
-    }
+        #[extract(Path)] id: i32,
+        #[extract(Json)] member: AddMemberDro,
+    ) -> crate::Result<()>;
 
-    #[endpoint(ok=Unit)]
+    #[endpoint(ok=Unit,path="/{project_id}/member/{user_id}",method=delete)]
     async fn remove_member(&self, #[extract(Path)] dto: RemoveMemberDto) -> crate::Result<()>;
 
     async fn get_role(&self, project_id: i32, user_id: i32) -> crate::Result<Option<ProjectRole>>;
 }
 
+#[derive(Clone)]
 pub struct SqlxProjectService {
     pool: PgPool,
 }
 
+#[async_trait::async_trait]
 impl ProjectService for SqlxProjectService {
     async fn get_by_id(&self, id: i32) -> crate::Result<Project> {
         Ok(Self::fetch_full(&self.pool, id).await?)

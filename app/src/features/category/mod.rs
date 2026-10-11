@@ -5,11 +5,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    entities::category::Category,
-    features::category::service::{CategoryService},
-};
-
 pub mod service;
 
 pub fn routes<R, State>() -> Router<State>
@@ -29,13 +24,6 @@ where
                 .post(EP::<R>::update_category)
                 .get(EP::<R>::get_by_id),
         )
-}
-
-pub async fn create_category0<Repo: CategoryService + Send + Sync + Clone>(
-    axum::extract::State(repo): axum::extract::State<Repo>,
-    Json(body): Json<CreateCategoryDto>,
-) -> Result<Json<Category>, crate::HttpError> {
-    Ok(Json::<Category>::from(repo.create_category(body).await?))
 }
 
 #[derive(Debug, Serialize, Deserialize)]

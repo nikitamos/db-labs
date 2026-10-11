@@ -1,43 +1,44 @@
 use super::{CreateTaskDto, UpdateTaskDto};
 use crate::{ResultExtensions, entities::{Page, PageRequest, task::Task}};
-use axum::extract::{Json, Path, Query};
+use axum::{extract::{Json, Path, Query}, routing::post};
 use chrono::DateTime;
 use sqlx::PgPool;
 
 type Unit = ();
 
 #[autoendpoint::endpoints(error=crate::HttpError)]
-pub trait TaskService {
-    #[endpoint(ok=Task)]
+#[async_trait::async_trait]
+pub trait TaskService : Clone + Send + Sync + 'static{
+    #[endpoint(ok=Json::<Task>,path="/{id}")]
     async fn get_by_id(&self, #[extract(Path)] id: i32) -> crate::Result<Task>;
 
-    #[endpoint(ok=Page::<Task>)]
+    #[endpoint(ok=Json::<Page::<Task>>,path="/")]
     async fn get_list(
         &self,
         #[extract(Query)] pagination: PageRequest,
     ) -> crate::Result<Page<Task>>;
 
-    #[endpoint(ok=Task)]
+    #[endpoint(ok=Json::<Task>,path="/",method=post)]
     async fn create_task(&self, #[extract(Json)] body: CreateTaskDto) -> crate::Result<Task>;
 
-    #[endpoint(ok=Task)]
+    #[endpoint(ok=Json::<Task>,path="/{id}",method=post)]
     async fn update_task(
         &self,
         #[extract(Path)] id: i32,
         #[extract(Json)] body: UpdateTaskDto,
     ) -> crate::Result<Task>;
 
-    #[endpoint(ok=Unit)]
+    #[endpoint(ok=Unit,path="/{id}",method=axum::routing::delete)]
     async fn delete_task(&self, #[extract(Path)] id: i32) -> crate::Result<Unit>;
 
-    #[endpoint(ok=Unit)]
+    #[endpoint(ok=Unit, path="/{dependent}/dep/{dependency}", method=post)]
     async fn add_dependency(
         &self,
         #[extract(Path)] dependent: i32,
         #[extract(Path)] dependency: i32,
     ) -> crate::Result<()>;
 
-    #[endpoint(ok=Unit)]
+    #[endpoint(ok=Unit, path="/{dependent}/dep/{dependency}", method=axum::routing::delete)]
     async fn remove_dependency(
         &self,
         #[extract(Path)] dependent: i32,
@@ -45,21 +46,21 @@ pub trait TaskService {
     ) -> crate::Result<()>;
 
 
-    #[endpoint(ok=Unit)]
+    #[endpoint(ok=Unit,path="/{task_id}/categories/add",method=post)]
     async fn add_to_categories(
         &self,
         #[extract(Path)] task_id: i32,
         #[extract(Json)] categories: Vec<i32>,
     ) -> crate::Result<()>;
 
-    #[endpoint(ok=Unit)]
+    #[endpoint(ok=Unit,path="/{task_id}/categories/delete",method=post)]
     async fn remove_from_categories(
         &self,
         #[extract(Path)] task_id: i32,
         #[extract(Json)] categories: Vec<i32>,
     ) -> crate::Result<()>;
 
-    #[endpoint(ok=Page::<Task>)]
+    #[endpoint(ok=Json::<Page::<Task>>,path="/by_category/{category}")]
     async fn find_by_category(
         &self,
         #[extract(Path)] category: i32,
@@ -67,6 +68,7 @@ pub trait TaskService {
     ) -> crate::Result<Page<Task>>;
 }
 
+#[derive(Clone, Debug)]
 pub struct SqlxTaskService {
     pool: PgPool,
 }
@@ -77,6 +79,7 @@ impl SqlxTaskService {
     }
 }
 
+#[async_trait::async_trait]
 impl TaskService for SqlxTaskService {
     async fn get_by_id(&self, id: i32) -> crate::Result<Task> {
         Ok(sqlx::query_as!(

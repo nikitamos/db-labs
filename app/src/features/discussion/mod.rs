@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 pub mod service;
 
 
+pub fn routes() {
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateDiscussionDto {
     pub task_id: i32,

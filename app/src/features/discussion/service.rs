@@ -1,39 +1,40 @@
 use super::{CreateDiscussionDto, UpdateDiscussionDto};
 use crate::{ResultExtensions, entities::{Page, PageRequest, discussion::DiscussionPost}};
-use axum::extract::{Json, Path, Query};
+use axum::{extract::{Json, Path, Query}, routing::{delete, post}};
 use sqlx::PgPool;
 
 type Unit = ();
 
 #[autoendpoint::endpoints(error=crate::HttpError)]
-pub trait DiscussionService {
-    #[endpoint(ok=DiscussionPost)]
+#[async_trait::async_trait]
+pub trait DiscussionService : Send + Sync + Clone + 'static{
+    #[endpoint(ok=Json::<DiscussionPost>,path="/{id}")]
     async fn get_by_id(&self, #[extract(Path)] id: i32) -> crate::Result<DiscussionPost>;
 
-    #[endpoint(ok=DiscussionPost)]
+    #[endpoint(ok=Json::<DiscussionPost>,path="/",method=post)]
     async fn create_post(
         &self,
         #[extract(Json)] body: CreateDiscussionDto,
     ) -> crate::Result<DiscussionPost>;
 
-    #[endpoint(ok=DiscussionPost)]
+    #[endpoint(ok=Json::<DiscussionPost>,path="/{id}",method=post)]
     async fn update_post(
         &self,
         #[extract(Path)] id: i32,
         #[extract(Json)] body: UpdateDiscussionDto,
     ) -> crate::Result<DiscussionPost>;
 
-    #[endpoint(ok=Unit)]
+    #[endpoint(ok=Unit,path="/{id}",method=delete)]
     async fn delete_post(&self, #[extract(Path)] id: i32) -> crate::Result<()>;
 
-    #[endpoint(ok=Page::<DiscussionPost>)]
+    #[endpoint(ok=Json::<Page::<DiscussionPost>>,path="/by_task/{task_id}")]
     async fn fetch_by_task(
         &self,
         #[extract(Path)] task_id: i32,
         #[extract(Query)] page: PageRequest,
     ) -> crate::Result<Page<DiscussionPost>>;
 
-    #[endpoint(ok=Page::<DiscussionPost>)]
+    #[endpoint(ok=Json::<Page::<DiscussionPost>>,path="/by_parent/{parent_id}")]
     async fn fetch_by_parent(
         &self,
         #[extract(Path)] parent_id: i32,
@@ -41,6 +42,7 @@ pub trait DiscussionService {
     ) -> crate::Result<Page<DiscussionPost>>;
 }
 
+#[derive(Clone)]
 pub struct SqlxDiscussionService {
     pool: PgPool,
 }
@@ -51,6 +53,7 @@ impl SqlxDiscussionService {
     }
 }
 
+#[async_trait::async_trait]
 impl DiscussionService for SqlxDiscussionService {
     async fn get_by_id(&self, id: i32) -> crate::Result<DiscussionPost> {
         Ok(sqlx::query_as!(

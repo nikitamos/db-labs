@@ -55,7 +55,7 @@ pub fn endpoints(
 
             pub fn routes<State>() -> axum::Router<State>
             where
-                State : #trait_ident + std::clone::Clone + std::marker::Send
+                State : std::clone::Clone + std::marker::Send
                       + std::marker::Sync + 'static,
                 Repo : axum::extract::FromRef<State>
             {
@@ -65,7 +65,7 @@ pub fn endpoints(
         }
     };
 
-    // println!("{new_struct}");
+    println!("{new_struct}");
 
     new_struct.into()
 }

@@ -23,7 +23,6 @@ use crate::{
     features::{
         category::service::SqlxCategoryService,
         maintenance::HealthStatus,
-        user::repository::TestUserRepo,
     },
 };
 
@@ -42,7 +41,6 @@ pub mod features {
 #[derive(Clone, FromRef)]
 pub struct AppState {
     pub db: Pool<Postgres>,
-    pub user_repo: TestUserRepo,
     pub category: SqlxCategoryService,
     pub health: Arc<Mutex<HealthStatus>>,
 }
@@ -62,7 +60,6 @@ impl AppState {
     pub async fn from_config(cfg: AppConfig) -> Self {
         let pool = Pool::<Postgres>::connect(&cfg.app_db_uri).await.unwrap();
         Self {
-            user_repo: TestUserRepo,
             category: SqlxCategoryService::new(pool.clone()),
             health: Arc::new(Default::default()),
             db: pool,

@@ -4,22 +4,11 @@ use app::{
     config::AppConfig,
     features::{
         category::service::SqlxCategoryService,
-        user::repository::{TestUserRepo, UserRepositoryEndpoints},
     },
 };
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use tower_http::trace::TraceLayer;
 use tracing::instrument::WithSubscriber;
-
-async fn health(State(_): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
-    (
-        StatusCode::OK,
-        serde_json::json!({
-            "status": "pass"
-        })
-        .into(),
-    )
-}
 
 fn setup_tracing() {
     use tracing_subscriber::fmt;
@@ -52,15 +41,15 @@ async fn main() {
     let _ = state.migrate_db().with_current_subscriber().await;
 
     let app = Router::new()
-        .route(
-            "/test/{id}",
-            get(UserRepositoryEndpoints::<TestUserRepo>::xxxx),
-        )
         .merge(app::features::maintenance::routes())
         .nest(
             "/category",
-            app::features::category::routes::<SqlxCategoryService, _>(),
+            app::features::category::service::CategoryServiceEndpoints::<SqlxCategoryService>::routes(),
         )
+        // .nest(
+        //     "/discussion",
+        //     Disc
+        // )
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

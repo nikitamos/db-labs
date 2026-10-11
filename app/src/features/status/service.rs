@@ -1,35 +1,37 @@
 use super::{CreateStatusDto, UpdateStatusDto};
 use crate::{ResultExtensions, entities::{Page, PageRequest, status::Status}};
-use axum::extract::{Json, Path, Query};
+use axum::{extract::{Json, Path, Query}, routing::post};
 use sqlx::PgPool;
 
 type Unit = ();
 
 #[autoendpoint::endpoints(error=crate::HttpError)]
-pub trait StatusService {
-    #[endpoint(ok=Status)]
+#[async_trait::async_trait]
+pub trait StatusService: Clone + Send + Sync + 'static {
+    #[endpoint(ok=Json::<Status>,path="/{id}")]
     async fn get_by_id(&self, #[extract(Path)] id: i32) -> crate::Result<Status>;
 
-    #[endpoint(ok=Page::<Status>)]
+    #[endpoint(ok=Json::<Page::<Status>>,path="/")]
     async fn get_list(
         &self,
         #[extract(Query)] pagination: PageRequest,
     ) -> crate::Result<Page<Status>>;
 
-    #[endpoint(ok=Status)]
+    #[endpoint(ok=Json::<Status>,path="/",method=post)]
     async fn create_status(&self, #[extract(Json)] body: CreateStatusDto) -> crate::Result<Status>;
 
-    #[endpoint(ok=Status)]
+    #[endpoint(ok=Json::<Status>,path="/{id}",method=post)]
     async fn update_status(
         &self,
         #[extract(Path)] id: i32,
         #[extract(Json)] body: UpdateStatusDto,
     ) -> crate::Result<Status>;
 
-    #[endpoint(ok=Unit)]
+    #[endpoint(ok=Unit,path="/{id}",method=post)]
     async fn delete_status(&self, #[extract(Path)] id: i32) -> crate::Result<()>;
 }
 
+#[derive(Debug, Clone)]
 pub struct SqlxStatusService {
     pool: PgPool,
 }
@@ -40,6 +42,7 @@ impl SqlxStatusService {
     }
 }
 
+#[async_trait::async_trait]
 impl StatusService for SqlxStatusService {
     async fn get_by_id(&self, id: i32) -> crate::Result<Status> {
         Ok(sqlx::query_as!(
