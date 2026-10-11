@@ -3,79 +3,17 @@ use std::borrow::Cow;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::{
-    Attribute, Error, FnArg, ItemTrait, Meta, Pat, ReceiverKind, Token, TraitItemFn, Type,
-    parse::Parse, parse_macro_input, spanned::Spanned,
+    Attribute, Error, FnArg, ItemTrait, LitStr, Meta, Pat, Path, ReceiverKind, Token, TraitItemFn,
+    Type, parse::Parse, parse_macro_input, parse_quote, spanned::Spanned,
 };
 
-#[derive(Debug, Default, Clone)]
-struct EndpointOptions<'a> {
-    error_type: Option<Cow<'a, Type>>,
-    ok_type: Option<Cow<'a, Type>>,
-    // ok_wrapper: Option<Type>
-}
+mod opts;
 
-struct KVPair<V: Parse> {
-    key: Ident,
-    eq: Token![=],
-    value: V,
-}
+use opts::EndpointOptions;
 
-impl<V: Parse> Parse for KVPair<V> {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        Ok(Self {
-            key: input.parse()?,
-            eq: input.parse()?,
-            value: input.parse()?,
-        })
-    }
-}
-
-impl<'a> EndpointOptions<'a> {
-    pub fn require_valid(&self, reference_span: proc_macro2::Span) -> syn::Result<()> {
-        if self.error_type.is_none() {
-            Err(Error::new(reference_span, "Error type is not specified"))
-        } else if self.ok_type.is_none() {
-            Err(Error::new(
-                reference_span.into(),
-                "Ok type is not specified",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
-    /// For each option does the following:
-    /// 1. If the option is present in `another`, returns the populates its value from `another`
-    /// 2. Otherwise, the option is populated from `self`
-    pub fn patch_with(self, another: EndpointOptions<'a>) -> EndpointOptions<'a> {
-        Self {
-            error_type: another.error_type.or(self.error_type),
-            ok_type: another.ok_type.or(self.ok_type),
-            // ok_wrapper: another.ok_wrapper.or(self::ok)
-        }
-    }
-}
-
-impl<'a> Parse for EndpointOptions<'a> {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut result = Self::default();
-        let pairs = input.parse_terminated(KVPair::<Type>::parse, Token![,])?;
-        for kv in pairs {
-            let k_ident = kv.key.to_string();
-            match k_ident.as_str() {
-                // TODO: is it possible to remove this allocation?
-                "error" => result.error_type = Some(Cow::Owned(kv.value)),
-                "ok" => result.ok_type = Some(Cow::Owned(kv.value)),
-                _ => {
-                    return Err(Error::new(
-                        kv.key.span(),
-                        format!("Unexpected identifier: {k_ident}"),
-                    ));
-                }
-            }
-        }
-        Ok(result)
-    }
+struct ParsedEndpoint {
+    pub handler: TokenStream,
+    pub route: TokenStream,
 }
 
 #[proc_macro_attribute]
@@ -87,6 +25,7 @@ pub fn endpoints(
     let mut target_trait = parse_macro_input!(item as ItemTrait);
 
     let mut functions = Vec::new();
+    let mut routes = Vec::new();
     for item in &mut target_trait.items {
         match item {
             syn::TraitItem::Fn(fn_item) => {
@@ -95,7 +34,8 @@ pub fn endpoints(
                     Ok(None) => continue,
                     Err(e) => return e.to_compile_error().into(),
                 };
-                functions.push(handler_fn);
+                functions.push(handler_fn.handler);
+                routes.push(handler_fn.route);
             }
             _ => {}
         }
@@ -112,6 +52,16 @@ pub fn endpoints(
 
         impl <Repo: #trait_ident> #struct_name<Repo> {
             #(#functions)*
+
+            pub fn routes<State>() -> axum::Router<State>
+            where
+                State : #trait_ident + std::clone::Clone + std::marker::Send
+                      + std::marker::Sync + 'static,
+                Repo : axum::extract::FromRef<State>
+            {
+                axum::Router::new()
+                    #(#routes)*
+            }
         }
     };
 
@@ -123,7 +73,7 @@ pub fn endpoints(
 fn process_fn(
     fn_item: &mut TraitItemFn,
     default_options: EndpointOptions,
-) -> syn::Result<Option<TokenStream>> {
+) -> syn::Result<Option<ParsedEndpoint>> {
     let fn_span = fn_item.sig.ident.span();
     let fn_name = &fn_item.sig.ident;
 
@@ -132,11 +82,17 @@ fn process_fn(
     };
 
     // Gather endpoint options
-    let options: EndpointOptions = if matches!(attr.meta, Meta::Path(_)) {
+    let mut options: EndpointOptions = if matches!(attr.meta, Meta::Path(_)) {
         default_options
     } else {
         default_options.patch_with(attr.parse_args()?)
     };
+    if options.path.is_none() {
+        options.path = Some(Cow::Owned(LitStr::new(
+            fn_name.to_string().as_str(),
+            Span::call_site(),
+        )));
+    }
     options.require_valid(attr.span())?;
 
     // Gather extractors
@@ -181,6 +137,8 @@ fn process_fn(
     let EndpointOptions {
         error_type,
         ok_type,
+        method,
+        path,
     } = options;
     let t_await = if fn_item.sig.asyncness.is_some() {
         quote! {.await}
@@ -188,7 +146,7 @@ fn process_fn(
         quote! {}
     };
 
-    let sig = quote! {
+    let body = quote! {
         pub async fn #fn_name
         (
             axum::extract::State(repo): axum::extract::State<Repo>,
@@ -200,8 +158,14 @@ fn process_fn(
             ))
         }
     };
+    let route = quote! {
+        .route(#path, #method(Self::#fn_name))
+    };
 
-    Ok(Some(sig))
+    Ok(Some(ParsedEndpoint {
+        handler: body,
+        route,
+    }))
 }
 
 /// If present, removes attribute with given name from the vector and returns it
