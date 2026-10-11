@@ -1,4 +1,4 @@
-use crate::entities::{project::Project, task::Task};
+use crate::entities::{ProjectRole, project::Project, task::Task};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,18 @@ pub struct UpdateProjectDto {
     pub description: Option<String>,
     pub start_time: Option<chrono::DateTime<Utc>>,
     pub deadline: Option<chrono::DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddMemberDro {
+    pub member_id: i32,
+    pub role: ProjectRole
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RemoveMemberDto {
+    pub project_id: i32,
+    pub user_id: i32
 }
 
 mod service;

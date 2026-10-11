@@ -2,14 +2,17 @@ use super::CreateProjectDto;
 use super::UpdateProjectDto;
 use crate::entities::Page;
 use crate::entities::PageRequest;
+use crate::entities::ProjectRole;
 use crate::entities::project::Project;
 use crate::entities::task::Task;
+use crate::features::project::AddMemberDro;
+use crate::features::project::RemoveMemberDto;
 use axum::extract::{Json, Path, Query};
 use chrono::DateTime;
 use sqlx::PgExecutor;
 use sqlx::PgPool;
-use sqlx::Postgres;
-use sqlx::query;
+
+type Unit = ();
 
 #[autoendpoint::endpoints(error=crate::HttpError)]
 pub trait ProjectService {
@@ -41,6 +44,24 @@ pub trait ProjectService {
         #[extract(Path)] id: i32,
         #[extract(Json)] body: UpdateProjectDto,
     ) -> crate::Result<Project>;
+
+    #[endpoint(ok=Unit)]
+    async fn add_member(
+        &self,
+        #[extract(Path)] id: i32,
+        #[extract(Json)] member: AddMemberDro,
+    ) -> crate::Result<()> {
+        todo!()
+    }
+
+    #[endpoint(ok=Unit)]
+    async fn remove_member(&self, #[extract(Path)] dto: RemoveMemberDto) -> crate::Result<()> {
+        todo!()
+    }
+
+    async fn get_role(&self, project_id: i32, user_id: i32) -> crate::Result<Option<ProjectRole>> {
+        todo!()
+    }
 }
 
 pub struct SqlxProjectService {

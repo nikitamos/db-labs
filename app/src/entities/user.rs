@@ -7,6 +7,7 @@ use crate::entities::{Page, PageRequest};
 pub struct User {
     id: Option<i32>,
     username: String,
+    #[serde(skip)]
     password_hash: Option<String>,
     email: String,
     first_name: String,

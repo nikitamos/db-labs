@@ -1,16 +1,22 @@
 use std::collections::HashMap;
 
-use app::{AppState, config::AppConfig, features::user::repository::{TestUserRepo, UserRepositoryEndpoints}};
+use app::{
+    AppState,
+    config::AppConfig,
+    features::user::repository::{TestUserRepo, UserRepositoryEndpoints},
+};
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use tower_http::trace::TraceLayer;
+use tracing::instrument::WithSubscriber;
 
-async fn health(State(_): State<AppState>) -> (StatusCode, &'static str) {
-    (StatusCode::OK, "healthy")
-}
-
-async fn all_env(State(_): State<AppState>) -> Json<HashMap<String, String>> {
-    let env: HashMap<String, String> = std::env::vars().collect();
-    Json(env)
+async fn health(State(_): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::OK,
+        serde_json::json!({
+            "status": "pass"
+        })
+        .into(),
+    )
 }
 
 fn setup_tracing() {
@@ -41,12 +47,14 @@ async fn main() {
         .unwrap();
 
     let state = AppState::from_config(config).await;
-    state.migrate_db().await.unwrap();
+    let _ = state.migrate_db().with_current_subscriber().await;
 
     let app = Router::new()
-        .route("/health", get(health))
-        .route("/all_env", get(all_env))
-        .route("/test/{id}", get(UserRepositoryEndpoints::<TestUserRepo>::xxxx))
+        .route(
+            "/test/{id}",
+            get(UserRepositoryEndpoints::<TestUserRepo>::xxxx),
+        )
+        .merge(app::features::maintenance::routes())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

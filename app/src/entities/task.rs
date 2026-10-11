@@ -1,9 +1,10 @@
-use std::convert::Infallible;
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime};
+use serde::Serialize;
 
 use crate::entities::{Relation, user::User};
 
+#[derive(Debug, Serialize)]
 pub struct Task {
     pub(crate) id: Option<i32>,
     pub(crate) name: String,

@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+pub mod category;
 pub mod project;
 pub mod role;
+pub mod status;
 pub mod task;
 pub mod user;
+pub mod discussion;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PageRequest<Oft: Ord + Default = i32> {
@@ -15,7 +18,7 @@ pub struct PageRequest<Oft: Ord + Default = i32> {
 pub struct Relation<R> {
     pub id: i32,
     #[serde(rename = "referee")]
-    pub value: Option<R>,
+    pub value: Option<Box<R>>,
 }
 
 impl<R> From<i32> for Relation<R> {
@@ -72,4 +75,13 @@ impl<T, Oft: Ord + Default> Page<T, Oft> {
             next_request: request.next_from(new_offset),
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectRole {
+    Observer,
+    Manager,
+    Worker,
 }
