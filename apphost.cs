@@ -7,6 +7,7 @@ var builder = DistributedApplication.CreateBuilder(args);
 
 var postgres =
     builder.AddPostgres("postgres")
+    .WithHostPort(40737)
     .WithDataVolume();
 
 var db = postgres.AddDatabase("app-db");

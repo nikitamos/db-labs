@@ -15,6 +15,7 @@ pub mod config;
 pub mod entities;
 pub mod features {
     pub mod user;
+    pub mod project;
 }
 
 #[derive(Clone, FromRef)]

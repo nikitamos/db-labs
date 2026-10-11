@@ -14,9 +14,26 @@ use syn::{
 
 #[derive(Debug, Default, Clone)]
 struct EndpointOptions<'a> {
-    error_type: Option<Cow<'a, Path>>,
-    ok_type: Option<Cow<'a, Path>>,
+    error_type: Option<Cow<'a, Type>>,
+    ok_type: Option<Cow<'a, Type>>,
 }
+
+struct KVPair<V: Parse> {
+    key: Ident,
+    eq: Token![=],
+    value: V
+}
+
+impl<V:Parse> Parse for KVPair<V> {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            key: input.parse()?,
+            eq: input.parse()?,
+            value: input.parse()?
+        })
+    }
+}
+
 
 impl<'a> EndpointOptions<'a> {
     pub fn require_valid(&self, reference_span: proc_macro2::Span) -> syn::Result<()> {
@@ -46,20 +63,16 @@ impl<'a> EndpointOptions<'a> {
 impl<'a> Parse for EndpointOptions<'a> {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut result = Self::default();
-        let pairs = input.parse_terminated(ExprAssign::parse, Token![,])?;
+        let pairs = input.parse_terminated(KVPair::<Type>::parse, Token![,])?;
         for kv in pairs {
-            let kv_span = kv.span();
-            let (Expr::Path(k), Expr::Path(v)) = (*kv.left, *kv.right) else {
-                return Err(Error::new(kv_span, "expected `identifier = path` pair"));
-            };
-            let k_ident = k.path.require_ident()?;
-            match k_ident.to_string().as_str() {
+            let k_ident = kv.key.to_string();
+            match k_ident.as_str() {
                 // TODO: is it possible to remove this allocation?
-                "error" => result.error_type = Some(Cow::Owned(v.path)),
-                "ok" => result.ok_type = Some(Cow::Owned(v.path)),
+                "error" => result.error_type = Some(Cow::Owned(kv.value)),
+                "ok" => result.ok_type = Some(Cow::Owned(kv.value)),
                 _ => {
                     return Err(Error::new(
-                        k_ident.span(),
+                        kv.key.span(),
                         format!("Unexpected identifier: {k_ident}"),
                     ));
                 }
