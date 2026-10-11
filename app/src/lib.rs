@@ -1,5 +1,8 @@
 use parking_lot::Mutex;
-use std::{fmt::{Display, format}, sync::Arc};
+use std::{
+    fmt::{Display, format},
+    sync::Arc,
+};
 
 use axum::{
     Json,
@@ -9,13 +12,19 @@ use axum::{
 };
 use serde::Serialize;
 use sqlx::{
-    Database, Pool, Postgres, migrate::{MigrateError, Migrator}, postgres::{PgConnectOptions, PgDatabaseError, PgQueryResult},
+    Database, Pool, Postgres,
+    migrate::{MigrateError, Migrator},
+    postgres::{PgConnectOptions, PgDatabaseError, PgQueryResult},
 };
 use tracing::{error, warn};
 
 use crate::{
     config::AppConfig,
-    features::{maintenance::HealthStatus, user::repository::TestUserRepo},
+    features::{
+        category::service::{CategoryService, SqlxCategoryService},
+        maintenance::HealthStatus,
+        user::repository::TestUserRepo,
+    },
 };
 
 pub mod config;
@@ -23,17 +32,18 @@ pub mod entities;
 pub mod features {
     pub mod category;
     pub mod discussion;
+    pub mod maintenance;
     pub mod project;
     pub mod status;
     pub mod task;
     pub mod user;
-    pub mod maintenance;
 }
 
 #[derive(Clone, FromRef)]
 pub struct AppState {
     pub db: Pool<Postgres>,
     pub user_repo: TestUserRepo,
+    pub category: SqlxCategoryService,
     pub health: Arc<Mutex<HealthStatus>>,
 }
 
@@ -42,7 +52,7 @@ pub enum Error {
     #[error("sql query failed: {0}")]
     Sqlx(#[from] sqlx::Error),
     #[error("Requested item does not exist")]
-    NotFound
+    NotFound,
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -52,18 +62,20 @@ impl AppState {
     pub async fn from_config(cfg: AppConfig) -> Self {
         let pool = Pool::<Postgres>::connect(&cfg.app_db_uri).await.unwrap();
         Self {
-            db: pool,
             user_repo: TestUserRepo,
+            category: SqlxCategoryService::new(pool.clone()),
             health: Arc::new(Default::default()),
+            db: pool,
         }
     }
 
     pub async fn migrate_db(&self) -> Result<(), MigrateError> {
+        tracing::info!("Applying migrations");
         MIGRATOR.run(&self.db).await.map_err(|e| {
             error!("Failed to apply migrations: {e}");
-           * self.health.lock() = HealthStatus::DbSetupFailed(format!("{e}"));
+            *self.health.lock() = HealthStatus::DbSetupFailed(format!("{e}"));
             e
-        })
+        }).inspect(|_| tracing::info!("Migration applied"))
     }
     pub async fn drop_db_content(&self) -> Result<PgQueryResult, sqlx::Error> {
         sqlx::raw_sql(
@@ -77,6 +89,7 @@ impl AppState {
             *self.health.lock() = HealthStatus::DbSetupFailed(format!("{e}"));
             e
         })
+        .inspect(|_| tracing::debug!("DB dropped"))
     }
     pub async fn reset_db(&self) -> sqlx::Result<()> {
         self.drop_db_content().await?;
@@ -112,7 +125,7 @@ impl From<Error> for HttpError {
     fn from(value: Error) -> Self {
         match value {
             Error::Sqlx(e) => Self::from_sqlx_error(e),
-            Error::NotFound => Self::new(StatusCode::NOT_FOUND, "requested item does not exist")
+            Error::NotFound => Self::new(StatusCode::NOT_FOUND, "requested item does not exist"),
         }
     }
 }
@@ -153,10 +166,10 @@ pub trait ResultExtensions<E> {
 
 impl<E> ResultExtensions<E> for Result<PgQueryResult, E> {
     fn report_noop_delete(self, context: impl Display) -> Result<(), E> {
-        self.map(|qr|
+        self.map(|qr| {
             if qr.rows_affected() == 0 {
                 warn!(%context, "attempt to remove non-existent item");
             }
-        )
+        })
     }
 }

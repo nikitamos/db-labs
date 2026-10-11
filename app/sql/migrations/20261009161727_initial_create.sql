@@ -6,7 +6,7 @@ create type ProjectRole as enum ('observer', 'manager', 'worker');
 create type AuditAction as enum ('create', 'update', 'delete');
 
 create table users (
-    id integer primary key,
+id integer generated always as identity primary key,
     username varchar(32) not null unique,
     password_hash char(60) not null,
     email varchar(254) not null unique,
@@ -16,12 +16,12 @@ create table users (
 );
 
 create table roles (
-  id integer primary key,
+id integer generated always as identity primary key,
   name varchar(32) not null
 );
 
 create table permissions (
-  id integer primary key,
+id integer generated always as identity primary key,
   name varchar(192) not null
 );
 
@@ -38,7 +38,7 @@ create table user_roles (
 );
 
 create table audit_log (
-  id integer primary key,
+id integer generated always as identity primary key,
   event_timestamp timestamp not null,
   user_id integer references users(id),
   table_name varchar(48) not null,
@@ -48,13 +48,13 @@ create table audit_log (
 );
 
 create table sessions (
-  id integer primary key,
+id integer generated always as identity primary key,
   user_id integer not null references users(id),
   auth_token varchar(4096) not null
 );
 
 create table projects (
-    id integer primary key,
+id integer generated always as identity primary key,
     manager_id integer not null references users(id),
     name varchar(64) not null,
     description varchar(512),
@@ -71,14 +71,14 @@ create table project_members (
 
 
 create table categories (
-    id integer primary key,
+id integer generated always as identity primary key,
     name varchar(24) not null,
     badge_color Color,
     urgency integer check(urgency > 0)
 );
 
 create table statuses (
-    id integer primary key,
+id integer generated always as identity primary key,
     name varchar(24) not null,
     color Color unique,
     ready boolean,
@@ -86,7 +86,7 @@ create table statuses (
 );
 
 create table tasks (
-    id integer primary key,
+id integer generated always as identity primary key,
     name varchar(64) not null,
     description varchar(1024) not null,
     deadline timestamp not null,
@@ -109,7 +109,7 @@ create table task_categories (
 );
 
 create table discussion_posts (
-    id integer primary key,
+id integer generated always as identity primary key,
     task_id integer references tasks(id),
     author_id integer references users(id),
     title varchar(48) not null,

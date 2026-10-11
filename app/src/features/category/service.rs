@@ -6,23 +6,24 @@ use sqlx::PgPool;
 type Unit = ();
 
 #[autoendpoint::endpoints(error=crate::HttpError)]
-pub trait CategoryService {
-    #[endpoint(ok=Category)]
+#[async_trait::async_trait]
+pub trait CategoryService: Send + Sync + Clone + 'static {
+    #[endpoint(ok=Json::<Category>)]
     async fn get_by_id(&self, #[extract(Path)] id: i32) -> crate::Result<Category>;
 
-    #[endpoint(ok=Page::<Category>)]
+    #[endpoint(ok=Json::<Page::<Category>>)]
     async fn get_list(
         &self,
         #[extract(Query)] pagination: PageRequest,
     ) -> crate::Result<Page<Category>>;
 
-    #[endpoint(ok=Category)]
+    #[endpoint(ok=Json::<Category>)]
     async fn create_category(
         &self,
         #[extract(Json)] body: CreateCategoryDto,
     ) -> crate::Result<Category>;
 
-    #[endpoint(ok=Category)]
+    #[endpoint(ok=Json::<Category>)]
     async fn update_category(
         &self,
         #[extract(Path)] id: i32,
@@ -33,6 +34,7 @@ pub trait CategoryService {
     async fn delete_category(&self, #[extract(Path)] id: i32) -> crate::Result<()>;
 }
 
+#[derive(Clone)]
 pub struct SqlxCategoryService {
     pool: PgPool,
 }
@@ -43,6 +45,7 @@ impl SqlxCategoryService {
     }
 }
 
+#[async_trait::async_trait]
 impl CategoryService for SqlxCategoryService {
     async fn get_by_id(&self, id: i32) -> crate::Result<Category> {
         Ok(sqlx::query_as!(

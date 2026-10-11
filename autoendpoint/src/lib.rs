@@ -16,24 +16,24 @@ use syn::{
 struct EndpointOptions<'a> {
     error_type: Option<Cow<'a, Type>>,
     ok_type: Option<Cow<'a, Type>>,
+    // ok_wrapper: Option<Type>
 }
 
 struct KVPair<V: Parse> {
     key: Ident,
     eq: Token![=],
-    value: V
+    value: V,
 }
 
-impl<V:Parse> Parse for KVPair<V> {
+impl<V: Parse> Parse for KVPair<V> {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(Self {
             key: input.parse()?,
             eq: input.parse()?,
-            value: input.parse()?
+            value: input.parse()?,
         })
     }
 }
-
 
 impl<'a> EndpointOptions<'a> {
     pub fn require_valid(&self, reference_span: proc_macro2::Span) -> syn::Result<()> {
@@ -56,6 +56,7 @@ impl<'a> EndpointOptions<'a> {
         Self {
             error_type: another.error_type.or(self.error_type),
             ok_type: another.ok_type.or(self.ok_type),
+            // ok_wrapper: another.ok_wrapper.or(self::ok)
         }
     }
 }
@@ -159,7 +160,7 @@ fn process_fn(
         }
     }
 
-    let mut endpoint_args = Vec::with_capacity(fn_item.sig.inputs.len()-1);
+    let mut endpoint_args = Vec::with_capacity(fn_item.sig.inputs.len() - 1);
     let mut endpoint_arg_names = Vec::with_capacity(endpoint_args.len());
     // TODO: is it a valid way to skip receiver?
     for arg in fn_item.sig.inputs.iter_mut().skip(1) {
@@ -188,10 +189,17 @@ fn process_fn(
     } = options;
     let t_await = if fn_item.sig.asyncness.is_some() {
         quote! {.await}
-    } else {quote! {}};
+    } else {
+        quote! {}
+    };
 
     let sig = quote! {
-        pub async fn #fn_name(axum::extract::State(repo): axum::extract::State<Repo>, #(#endpoint_args),*) -> Result<#ok_type, #error_type> {
+        pub async fn #fn_name
+        (
+            axum::extract::State(repo): axum::extract::State<Repo>,
+            #(#endpoint_args),*
+        ) -> Result<#ok_type, #error_type>
+        {
             Ok(#ok_type ::from(
                 repo.#fn_name(#(#endpoint_arg_names),*)#t_await?
             ))
