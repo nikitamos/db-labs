@@ -89,7 +89,7 @@ fn process_fn(
     };
     if options.path.is_none() {
         options.path = Some(Cow::Owned(LitStr::new(
-            fn_name.to_string().as_str(),
+            &format!("/{fn_name}"),
             Span::call_site(),
         )));
     }

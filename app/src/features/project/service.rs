@@ -67,6 +67,12 @@ pub struct SqlxProjectService {
     pool: PgPool,
 }
 
+impl SqlxProjectService {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
 #[async_trait::async_trait]
 impl ProjectService for SqlxProjectService {
     async fn get_by_id(&self, id: i32) -> crate::Result<Project> {

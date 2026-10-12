@@ -1,6 +1,6 @@
 use super::{CreateStatusDto, UpdateStatusDto};
 use crate::{ResultExtensions, entities::{Page, PageRequest, status::Status}};
-use axum::{extract::{Json, Path, Query}, routing::post};
+use axum::{extract::{Json, Path, Query}, routing::{delete, post}};
 use sqlx::PgPool;
 
 type Unit = ();
@@ -27,7 +27,7 @@ pub trait StatusService: Clone + Send + Sync + 'static {
         #[extract(Json)] body: UpdateStatusDto,
     ) -> crate::Result<Status>;
 
-    #[endpoint(ok=Unit,path="/{id}",method=post)]
+    #[endpoint(ok=Unit,path="/{id}",method=delete)]
     async fn delete_status(&self, #[extract(Path)] id: i32) -> crate::Result<()>;
 }
 

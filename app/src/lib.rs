@@ -19,10 +19,8 @@ use sqlx::{
 use tracing::{error, warn};
 
 use crate::{
-    config::AppConfig,
-    features::{
-        category::service::SqlxCategoryService,
-        maintenance::HealthStatus,
+    config::AppConfig, features::{
+        category::service::SqlxCategoryService, discussion::service::SqlxDiscussionService, maintenance::HealthStatus, project::service::SqlxProjectService, status::service::SqlxStatusService, task::service::SqlxTaskService,
     },
 };
 
@@ -42,6 +40,10 @@ pub mod features {
 pub struct AppState {
     pub db: Pool<Postgres>,
     pub category: SqlxCategoryService,
+    pub discussion: SqlxDiscussionService,
+    pub project: SqlxProjectService,
+    pub status: SqlxStatusService,
+    pub task: SqlxTaskService,
     pub health: Arc<Mutex<HealthStatus>>,
 }
 
@@ -61,6 +63,10 @@ impl AppState {
         let pool = Pool::<Postgres>::connect(&cfg.app_db_uri).await.unwrap();
         Self {
             category: SqlxCategoryService::new(pool.clone()),
+            discussion: SqlxDiscussionService::new(pool.clone()),
+            project: SqlxProjectService::new(pool.clone()),
+            status: SqlxStatusService::new(pool.clone()),
+            task: SqlxTaskService::new(pool.clone()),
             health: Arc::new(Default::default()),
             db: pool,
         }

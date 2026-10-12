@@ -32,4 +32,4 @@ pub struct RemoveMemberDto {
     pub user_id: i32
 }
 
-mod service;
+pub mod service;

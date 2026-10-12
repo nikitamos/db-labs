@@ -1,9 +1,12 @@
-
 use app::{
     AppState,
     config::AppConfig,
     features::{
-        category::service::SqlxCategoryService,
+        category::service::{CategoryServiceEndpoints, SqlxCategoryService},
+        discussion::service::{DiscussionServiceEndpoints, SqlxDiscussionService},
+        project::service::{ProjectServiceEndpoints, SqlxProjectService},
+        status::service::{SqlxStatusService, StatusServiceEndpoints},
+        task::service::{SqlxTaskService, TaskServiceEndpoints},
     },
 };
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
@@ -44,12 +47,21 @@ async fn main() {
         .merge(app::features::maintenance::routes())
         .nest(
             "/category",
-            app::features::category::service::CategoryServiceEndpoints::<SqlxCategoryService>::routes(),
+            CategoryServiceEndpoints::<SqlxCategoryService>::routes(),
         )
-        // .nest(
-        //     "/discussion",
-        //     Disc
-        // )
+        .nest(
+            "/discussion",
+            DiscussionServiceEndpoints::<SqlxDiscussionService>::routes(),
+        )
+        .nest(
+            "/project",
+            ProjectServiceEndpoints::<SqlxProjectService>::routes(),
+        )
+        .nest(
+            "/status",
+            StatusServiceEndpoints::<SqlxStatusService>::routes(),
+        )
+        .nest("/task", TaskServiceEndpoints::<SqlxTaskService>::routes())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
