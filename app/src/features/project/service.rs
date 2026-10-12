@@ -1,5 +1,6 @@
 use super::CreateProjectDto;
 use super::UpdateProjectDto;
+use crate::ResultExtensions;
 use crate::entities::Page;
 use crate::entities::PageRequest;
 use crate::entities::ProjectRole;
@@ -47,7 +48,6 @@ pub trait ProjectService: Clone + Send + Sync + 'static {
         #[extract(Path)] id: i32,
         #[extract(Json)] body: UpdateProjectDto,
     ) -> crate::Result<Project>;
-    // delete?
 
     #[endpoint(ok=Unit,path="/{id}/member",method=post)]
     async fn add_member(
@@ -55,6 +55,9 @@ pub trait ProjectService: Clone + Send + Sync + 'static {
         #[extract(Path)] id: i32,
         #[extract(Json)] member: AddMemberDro,
     ) -> crate::Result<()>;
+
+    #[endpoint(ok=Unit,path="/{id}",method=delete)]
+    async fn delete_project(&self, #[extract(Path)] id: i32) -> crate::Result<()>;
 
     #[endpoint(ok=Unit,path="/{project_id}/member/{user_id}",method=delete)]
     async fn remove_member(&self, #[extract(Path)] dto: RemoveMemberDto) -> crate::Result<()>;
@@ -79,7 +82,6 @@ impl ProjectService for SqlxProjectService {
         Ok(Self::fetch_full(&self.pool, id).await?)
     }
 
-    // FIXME: move to correct service
     async fn project_tasks(&self, id: i32, pagination: PageRequest) -> crate::Result<Page<Task>> {
         let items = sqlx::query_as!(
             Task,
@@ -267,7 +269,7 @@ impl ProjectService for SqlxProjectService {
     async fn get_role(&self, project_id: i32, user_id: i32) -> crate::Result<Option<ProjectRole>> {
         let role = sqlx::query_scalar!(
             r#"
-            SELECT project_role AS "project_role!: ProjectRole"
+            SELECT project_role AS "project_role: ProjectRole"
             FROM project_members
             WHERE project_id = $1 AND user_id = $2
             "#,
@@ -277,6 +279,13 @@ impl ProjectService for SqlxProjectService {
         .fetch_optional(&self.pool)
         .await?;
         Ok(role)
+    }
+
+    async fn delete_project(&self, id: i32) -> crate::Result<()> {
+        Ok(sqlx::query!("DELETE FROM projects WHERE id = $1", id)
+            .execute(&self.pool)
+            .await
+            .report_noop_delete("project")?)
     }
 }
 

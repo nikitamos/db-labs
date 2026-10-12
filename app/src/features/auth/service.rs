@@ -53,7 +53,6 @@ impl SqlxAuthService {
 #[async_trait::async_trait]
 impl AuthService for SqlxAuthService {
     async fn signup(&self, dto: SignupDto) -> crate::Result<User> {
-        // TODO: password validation
         let password_hash = bcrypt::hash(&dto.password, 12)?;
         Ok(sqlx::query_as!(
             User,
@@ -86,7 +85,6 @@ impl AuthService for SqlxAuthService {
             .get_by_username_or_email(dto.identity)
             .await?;
         user.check_password(dto.password)?;
-        // create session
         let session = sqlx::query_as!(
             Session,
             r#"

@@ -7,9 +7,9 @@ create type AuditAction as enum ('create', 'update', 'delete');
 
 create table users (
 id integer generated always as identity primary key,
-    username varchar(32) not null unique check (username ~ '[0-9a-zA-Z]+'),
+    username varchar(32) not null unique check (username ~ '^[0-9a-zA-Z]+$'),
     password_hash char(60) not null,
-    email varchar(254) not null unique,
+    email varchar(254) not null unique unique check (email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
     first_name varchar(256) not null,
     second_name varchar(256) not null,
     bio text
@@ -68,7 +68,7 @@ create index on projects(name);
 create table project_members (
     user_id integer not null references users(id) on delete cascade,
     project_id integer not null references projects(id) on delete cascade,
-    project_role ProjectRole,
+    project_role ProjectRole not null,
     primary key (user_id, project_id)
 );
 
@@ -123,5 +123,4 @@ id integer generated always as identity primary key,
 );
 
 -- TODO:
--- email check?
 -- deadline span check

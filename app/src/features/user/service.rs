@@ -55,7 +55,7 @@ impl UserService for SqlxUserService {
             User,
             r#"
                 SELECT * from users
-                WHERE $1 IN (users.email, users.username)
+                WHERE LOWER($1) IN (LOWER(users.email), LOWER(users.username))
                 "#,
             identity
         )
