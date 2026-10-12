@@ -1,12 +1,6 @@
 use app::{
-    AppState,
-    config::AppConfig,
-    features::{
-        category::service::{CategoryServiceEndpoints, SqlxCategoryService},
-        discussion::service::{DiscussionServiceEndpoints, SqlxDiscussionService},
-        project::service::{ProjectServiceEndpoints, SqlxProjectService},
-        status::service::{SqlxStatusService, StatusServiceEndpoints},
-        task::service::{SqlxTaskService, TaskServiceEndpoints},
+    AppState, config::AppConfig, features::{
+        auth::service::{AuthServiceEndpoints, SqlxAuthService}, category::service::{CategoryServiceEndpoints, SqlxCategoryService}, discussion::service::{DiscussionServiceEndpoints, SqlxDiscussionService}, project::service::{ProjectServiceEndpoints, SqlxProjectService}, status::service::{SqlxStatusService, StatusServiceEndpoints}, task::service::{SqlxTaskService, TaskServiceEndpoints}, user::service::{SqlxUserService, UserServiceEndpoints},
     },
 };
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
@@ -60,6 +54,14 @@ async fn main() {
         .nest(
             "/status",
             StatusServiceEndpoints::<SqlxStatusService>::routes(),
+        )
+        .nest(
+            "/auth",
+            AuthServiceEndpoints::<SqlxAuthService>::routes(),
+        )
+        .nest(
+            "/user",
+            UserServiceEndpoints::<SqlxUserService>::routes()
         )
         .nest("/task", TaskServiceEndpoints::<SqlxTaskService>::routes())
         .layer(TraceLayer::new_for_http())

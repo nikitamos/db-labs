@@ -65,7 +65,7 @@ pub fn endpoints(
         }
     };
 
-    println!("{new_struct}");
+    // println!("{new_struct}");
 
     new_struct.into()
 }

@@ -1,15 +1,7 @@
 use parking_lot::Mutex;
-use std::{
-    fmt::Display,
-    sync::Arc,
-};
+use std::{fmt::Display, sync::Arc};
 
-use axum::{
-    Json,
-    extract::FromRef,
-    http::StatusCode,
-    response::IntoResponse,
-};
+use axum::{Json, extract::FromRef, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 use sqlx::{
     Pool, Postgres,
@@ -20,13 +12,14 @@ use tracing::{error, warn};
 
 use crate::{
     config::AppConfig, features::{
-        category::service::SqlxCategoryService, discussion::service::SqlxDiscussionService, maintenance::HealthStatus, project::service::SqlxProjectService, status::service::SqlxStatusService, task::service::SqlxTaskService,
+        auth::service::SqlxAuthService, category::service::SqlxCategoryService, discussion::service::SqlxDiscussionService, maintenance::HealthStatus, project::service::SqlxProjectService, status::service::SqlxStatusService, task::service::SqlxTaskService, user::service::SqlxUserService,
     },
 };
 
 pub mod config;
 pub mod entities;
 pub mod features {
+    pub mod auth;
     pub mod category;
     pub mod discussion;
     pub mod maintenance;
@@ -44,6 +37,8 @@ pub struct AppState {
     pub project: SqlxProjectService,
     pub status: SqlxStatusService,
     pub task: SqlxTaskService,
+    pub user: SqlxUserService,
+    pub auth: SqlxAuthService,
     pub health: Arc<Mutex<HealthStatus>>,
 }
 
@@ -51,6 +46,10 @@ pub struct AppState {
 pub enum Error {
     #[error("sql query failed: {0}")]
     Sqlx(#[from] sqlx::Error),
+    #[error("bcrypt operation failed: {0}")]
+    Bcrypt(#[from] bcrypt::BcryptError),
+    #[error("passwords do not match")]
+    WrongPassword,
     #[error("Requested item does not exist")]
     NotFound,
 }
@@ -61,12 +60,15 @@ static MIGRATOR: Migrator = sqlx::migrate!("./sql/migrations");
 impl AppState {
     pub async fn from_config(cfg: AppConfig) -> Self {
         let pool = Pool::<Postgres>::connect(&cfg.app_db_uri).await.unwrap();
+        let user = SqlxUserService::new(pool.clone());
         Self {
             category: SqlxCategoryService::new(pool.clone()),
             discussion: SqlxDiscussionService::new(pool.clone()),
             project: SqlxProjectService::new(pool.clone()),
             status: SqlxStatusService::new(pool.clone()),
             task: SqlxTaskService::new(pool.clone()),
+            auth: SqlxAuthService::new(pool.clone(), user.clone()),
+            user,
             health: Arc::new(Default::default()),
             db: pool,
         }
@@ -74,11 +76,15 @@ impl AppState {
 
     pub async fn migrate_db(&self) -> Result<(), MigrateError> {
         tracing::info!("Applying migrations");
-        MIGRATOR.run(&self.db).await.map_err(|e| {
-            error!("Failed to apply migrations: {e}");
-            *self.health.lock() = HealthStatus::DbSetupFailed(format!("{e}"));
-            e
-        }).inspect(|_| tracing::info!("Migration applied"))
+        MIGRATOR
+            .run(&self.db)
+            .await
+            .map_err(|e| {
+                error!("Failed to apply migrations: {e}");
+                *self.health.lock() = HealthStatus::DbSetupFailed(format!("{e}"));
+                e
+            })
+            .inspect(|_| tracing::info!("Migration applied"))
     }
     pub async fn drop_db_content(&self) -> Result<PgQueryResult, sqlx::Error> {
         sqlx::raw_sql(
@@ -129,6 +135,8 @@ impl From<Error> for HttpError {
         match value {
             Error::Sqlx(e) => Self::from_sqlx_error(e),
             Error::NotFound => Self::new(StatusCode::NOT_FOUND, "requested item does not exist"),
+            Error::WrongPassword => Self::new(StatusCode::UNAUTHORIZED, "wrong password"),
+            Error::Bcrypt(e) => Self::from_bcrypt(e),
         }
     }
 }
@@ -153,6 +161,10 @@ impl HttpError {
             }
             _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, "database error"),
         }
+    }
+    pub fn from_bcrypt(e: bcrypt::BcryptError) -> Self {
+        tracing::error!(bcrypt_error=%e);
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "password issues")
     }
 }
 

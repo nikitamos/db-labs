@@ -7,6 +7,7 @@ pub mod status;
 pub mod task;
 pub mod user;
 pub mod discussion;
+pub mod session;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PageRequest<Oft: Ord + Default = i32> {

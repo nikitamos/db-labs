@@ -32,6 +32,10 @@ pub async fn health_check(State(app): State<AppState>) -> Response {
     app.health.lock().into_response()
 }
 
+pub async fn populate_db(State(app):  State<AppState>) -> Result<(), HttpError> {
+    Ok(())
+}
+
 pub async fn reset_db(State(app): State<AppState>) -> Result<(), HttpError> {
     app.reset_db().await.map_err(crate::Error::from)?;
     Ok(())
@@ -41,6 +45,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/health", get(health_check))
         .route("/db_reset", post(reset_db))
+        .route("/db_populate", post(populate_db))
 }
 
 // pub fn routes()
