@@ -1,21 +1,20 @@
-use std::error::Error;
 
 use app::{
     AppState, config::AppConfig, features::{
         auth::service::{AuthServiceEndpoints, SqlxAuthService}, category::service::{CategoryServiceEndpoints, SqlxCategoryService}, discussion::service::{DiscussionServiceEndpoints, SqlxDiscussionService}, project::service::{ProjectServiceEndpoints, SqlxProjectService}, status::service::{SqlxStatusService, StatusServiceEndpoints}, task::service::{SqlxTaskService, TaskServiceEndpoints}, user::service::{SqlxUserService, UserServiceEndpoints},
     },
 };
-use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
+use axum::Router;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithTonicConfig;
 use tonic::transport::ClientTlsConfig;
 use tower_http::trace::TraceLayer;
-use tracing::{instrument::WithSubscriber, subscriber};
+use tracing::instrument::WithSubscriber;
 
-use opentelemetry::{logs::LoggerProvider, trace::TracerProvider};
+use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::{
     logs::SdkLoggerProvider,
-    trace::{SdkTracerProvider, SpanExporter},
+    trace::SdkTracerProvider,
 };
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};

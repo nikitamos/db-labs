@@ -1,5 +1,5 @@
 use autoendpoint::endpoints;
-use axum::extract::{self, Json, Path, Query};
+use axum::extract::{Json, Path, Query};
 use axum::routing::{delete, post};
 use sqlx::PgPool;
 

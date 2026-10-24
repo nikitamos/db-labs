@@ -1,9 +1,9 @@
 use autoendpoint::endpoints;
 use axum::{
-    extract::{self, Json, Path},
+    extract::{Json, Path},
     routing::post,
 };
-use sqlx::{PgPool, pool};
+use sqlx::PgPool;
 
 use crate::{
     ResultExtensions,
