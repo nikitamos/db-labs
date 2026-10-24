@@ -6,13 +6,17 @@ use serde::Serialize;
 use sqlx::{
     Pool, Postgres,
     migrate::{MigrateError, Migrator},
-    postgres::PgQueryResult,
+    postgres::{PgConnectOptions, PgPoolOptions, PgQueryResult},
 };
 use tracing::{error, warn};
 
 use crate::{
-    config::AppConfig, features::{
-        auth::service::SqlxAuthService, category::service::SqlxCategoryService, discussion::service::SqlxDiscussionService, maintenance::HealthStatus, project::service::SqlxProjectService, status::service::SqlxStatusService, task::service::SqlxTaskService, user::service::SqlxUserService,
+    config::AppConfig,
+    features::{
+        auth::service::SqlxAuthService, category::service::SqlxCategoryService,
+        discussion::service::SqlxDiscussionService, maintenance::HealthStatus,
+        project::service::SqlxProjectService, status::service::SqlxStatusService,
+        task::service::SqlxTaskService, user::service::SqlxUserService,
     },
 };
 
@@ -59,7 +63,15 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 static MIGRATOR: Migrator = sqlx::migrate!("./sql/migrations");
 impl AppState {
     pub async fn from_config(cfg: AppConfig) -> Self {
-        let pool = Pool::<Postgres>::connect(&cfg.app_db_uri).await.unwrap();
+        let pool = PgPoolOptions::new()
+            .max_connections(24)
+            .before_acquire(|_, m| Box::pin(async move {
+                tracing::debug!(age_ms=m.age.as_millis(), "acquire connection");
+                Ok(true)
+            }))
+            .connect(&cfg.app_db_uri)
+            .await
+            .unwrap();
         let user = SqlxUserService::new(pool.clone());
         Self {
             category: SqlxCategoryService::new(pool.clone()),
@@ -174,6 +186,20 @@ where
 {
     serializer.serialize_u16(status.as_u16())
 }
+
+pub struct WithCode<const CODE: u16, R: IntoResponse>(pub R);
+
+impl<const CODE: u16, R: IntoResponse> IntoResponse for WithCode<CODE, R> {
+    fn into_response(self) -> axum::response::Response {
+        (StatusCode::from_u16(CODE).unwrap(), self.0).into_response()
+    }
+}
+impl<const CODE: u16, R: IntoResponse> From<R> for WithCode<CODE, R> {
+    fn from(value: R) -> Self {
+        Self(value)
+    }
+}
+
 
 pub trait ResultExtensions<E> {
     fn report_noop_delete(self, context: impl Display) -> Result<(), E>;

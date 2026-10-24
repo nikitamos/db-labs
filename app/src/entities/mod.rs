@@ -1,18 +1,27 @@
 use serde::{Deserialize, Serialize};
 
 pub mod category;
+pub mod discussion;
 pub mod project;
 pub mod role;
+pub mod session;
 pub mod status;
 pub mod task;
 pub mod user;
-pub mod discussion;
-pub mod session;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PageRequest<Oft: Ord + Default = i32> {
     pub limit: i64,
     pub offset: Oft,
+}
+
+impl Default for PageRequest {
+    fn default() -> Self {
+        Self {
+            limit: 5,
+            offset: 0,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -79,7 +88,7 @@ impl<T, Oft: Ord + Default> Page<T, Oft> {
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name="ProjectRole", rename_all = "lowercase")]
+#[sqlx(type_name = "ProjectRole", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectRole {
     Observer,

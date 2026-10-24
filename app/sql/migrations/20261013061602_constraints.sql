@@ -1,0 +1,4 @@
+ALTER TABLE users
+ADD CONSTRAINT CHECK(LENGTH(username) > 3);
+
+
