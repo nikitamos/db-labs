@@ -17,6 +17,7 @@ builder.AddRustApp("backend", "./app")
     .WithHttpEndpoint(env: "PORT")
     .WithHttpHealthCheck("/health")
     .WithReference(db)
+    .WithCertificateTrustScope(CertificateTrustScope.System)
     .WaitFor(db);
 
 builder.Build().Run();

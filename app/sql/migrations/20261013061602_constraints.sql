@@ -1,4 +1,4 @@
-ALTER TABLE users
-ADD CONSTRAINT CHECK(LENGTH(username) > 3);
+-- ALTER TABLE users
+-- ADD CONSTRAINT CHECK(LENGTH(username) > 3);
 
 
