@@ -1,4 +1,4 @@
-use proc_macro2::{Ident, Punct, Span, TokenStream};
+use proc_macro2::{Ident, Span};
 use std::borrow::Cow;
 use syn::{
     Error, LitStr, Path, Result, Token, Type, TypePath,
@@ -42,7 +42,7 @@ impl Value {
             Value::String(lit_str) => lit_str.span(),
         }
     }
-    pub fn to_type(self) -> Result<Type> {
+    pub fn into_type(self) -> Result<Type> {
         if let Self::Type(v) = self {
             Ok(v)
         } else {
@@ -50,7 +50,7 @@ impl Value {
         }
     }
 
-    pub fn to_path(self) -> Result<Path> {
+    pub fn into_path(self) -> Result<Path> {
         if let Self::Path(p) | Self::Type(Type::Path(TypePath { path: p, .. })) = self {
             Ok(p)
         } else {
@@ -58,7 +58,7 @@ impl Value {
         }
     }
 
-    pub fn to_string(self) -> Result<LitStr> {
+    pub fn into_string(self) -> Result<LitStr> {
         if let Self::String(v) = self {
             Ok(v)
         } else {
@@ -111,7 +111,7 @@ impl<'a> EndpointOptions<'a> {
                 "ok type is not specified",
             ))
         } else if self.path.is_none() {
-            Err(Error::new(reference_span.into(), "endpoint path is not specified"))
+            Err(Error::new(reference_span, "endpoint path is not specified"))
         } else {
             Ok(())
         }
@@ -138,10 +138,10 @@ impl<'a> Parse for EndpointOptions<'a> {
             let k_ident = kv.key.to_string();
             match k_ident.as_str() {
                 // TODO: is it possible to remove this allocation?
-                "error" => result.error_type = Some(Cow::Owned(kv.value.to_type()?)),
-                "ok" => result.ok_type = Some(Cow::Owned(kv.value.to_type()?)),
-                "method" => result.method = Cow::Owned(kv.value.to_path()?),
-                "path" => result.path = Some(Cow::Owned(kv.value.to_string()?)),
+                "error" => result.error_type = Some(Cow::Owned(kv.value.into_type()?)),
+                "ok" => result.ok_type = Some(Cow::Owned(kv.value.into_type()?)),
+                "method" => result.method = Cow::Owned(kv.value.into_path()?),
+                "path" => result.path = Some(Cow::Owned(kv.value.into_string()?)),
                 _ => {
                     return Err(Error::new(
                         kv.key.span(),

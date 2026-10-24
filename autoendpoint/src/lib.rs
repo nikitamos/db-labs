@@ -3,8 +3,8 @@ use std::borrow::Cow;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::{
-    Attribute, Error, FnArg, ItemTrait, LitStr, Meta, Pat, Path, ReceiverKind, Token, TraitItemFn,
-    Type, parse::Parse, parse_macro_input, parse_quote, spanned::Spanned,
+    Attribute, Error, FnArg, ItemTrait, LitStr, Meta, Pat, ReceiverKind, TraitItemFn,
+    Type, parse_macro_input, spanned::Spanned,
 };
 
 mod opts;

@@ -17,7 +17,6 @@ use opentelemetry_sdk::{
     trace::SdkTracerProvider,
 };
 use tracing_opentelemetry::OpenTelemetryLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn setup_tracing() {
     use tracing_subscriber::fmt;
