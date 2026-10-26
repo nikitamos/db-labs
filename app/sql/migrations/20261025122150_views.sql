@@ -83,16 +83,45 @@ GROUP BY (t.id,
           statuses.id,
           projects.id);
 
+DROP VIEW IF EXISTS empty_projects;
+
+
+CREATE VIEW empty_projects AS
+SELECT id,
+       deadline,
+       name,
+       description,
+       manager_id AS manager,
+       start_time
+FROM projects
+WHERE NOT EXISTS
+        (SELECT 1
+         FROM tasks
+         WHERE tasks.project_id = projects.id);
+
+
+DROP VIEW IF EXISTS project_with_navigation;
+
+
+CREATE VIEW project_with_navigation AS
+SELECT p.id,
+       jsonb_build_object('id', users.id, 'username', users.username, 'password_hash', users.password_hash, 'email', users.email, 'first_name', users.first_name, 'second_name', users.second_name, 'bio', users.bio) as manager,
+       p.name,
+       p.description,
+       p.start_time,
+       p.deadline
+FROM projects p
+JOIN users ON p.manager_id = users.id;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- TODO: full-text search, 'complex data operations'
 
 ALTER TABLE projects
 ADD COLUMN tsearchable tsvector
 GENERATED ALWAYS AS (to_tsvector('english', name || ' ' || description)) STORED;
 
 ALTER TABLE users
-ADD COLUMN fuzz_searchable GENERATED ALWAYS AS username || ' ' || email || ' ' || first_name || ' ' || second_name;
+ADD COLUMN fuzz_searchable text
+GENERATED ALWAYS AS (username || ' ' || email || ' ' || first_name || ' ' || second_name) STORED;
 
 ALTER TABLE tasks
 ADD COLUMN tsearchable tsvector

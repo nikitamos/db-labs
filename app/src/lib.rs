@@ -214,3 +214,23 @@ impl<E> ResultExtensions<E> for Result<PgQueryResult, E> {
         })
     }
 }
+
+
+#[macro_export]
+macro_rules! with {
+  ($x:ident: $($($fields:ident).* = $val: expr), *) => {
+      {
+        let mut y = $x;
+        $(y$(.$fields)* = $val;)*
+        y
+      }
+  };
+  ($x:expr => $($($fields:ident).* = $val: expr), *) => {
+      {
+        let mut y = $x;
+        // TODO: Reuse arm #0
+        $(y$(.$fields)* = $val;)*
+        y
+      }
+  };
+}

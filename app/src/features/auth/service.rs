@@ -12,6 +12,7 @@ use crate::{
         auth::{ChangePasswordDto, SessionDto, SigninDto, SignupDto},
         user::service::{SqlxUserService, UserService},
     },
+    with,
 };
 
 type Unit = ();
@@ -43,10 +44,7 @@ pub struct SqlxAuthService {
 
 impl SqlxAuthService {
     pub fn new(pool: PgPool, user_service: SqlxUserService) -> Self {
-        Self {
-            pool,
-            user_service,
-        }
+        Self { pool, user_service }
     }
 }
 
@@ -66,7 +64,7 @@ impl AuthService for SqlxAuthService {
                 bio
                 )
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING *
+            RETURNING id, username, password_hash, email, first_name, second_name, bio
             "#,
             dto.username,
             password_hash,
@@ -76,7 +74,8 @@ impl AuthService for SqlxAuthService {
             dto.bio
         )
         .fetch_one(&self.pool)
-        .await?)
+        .await
+        .map(|u| with!(u: password_hash = None))?)
     }
 
     async fn login(&self, dto: SigninDto) -> crate::Result<SessionDto> {

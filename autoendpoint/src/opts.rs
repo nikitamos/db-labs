@@ -13,7 +13,7 @@ pub struct EndpointOptions<'a> {
     pub ok_type: Option<Cow<'a, Type>>,
     pub method: Cow<'a, Path>,
     pub path: Option<Cow<'a, LitStr>>,
-    // ok_wrapper: Option<Type>
+    pub router: Option<Path>, // ok_wrapper: Option<Type>
 }
 
 impl<'a> Default for EndpointOptions<'a> {
@@ -23,6 +23,7 @@ impl<'a> Default for EndpointOptions<'a> {
             ok_type: Default::default(),
             method: Cow::Owned(parse_quote!(axum::routing::get)),
             path: Default::default(),
+            router: None,
         }
     }
 }
@@ -71,9 +72,7 @@ impl Parse for Value {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         input
             .parse()
-            .map(|x| {
-                Self::String(x)
-            })
+            .map(|x| Self::String(x))
             .or_else(|_| input.parse().map(Self::Type))
     }
 }
@@ -117,6 +116,14 @@ impl<'a> EndpointOptions<'a> {
         }
     }
 
+    pub fn router(&self) -> Cow<'_, Path> {
+        if let Some(ref p) = self.router {
+            Cow::Borrowed(p)
+        } else {
+            Cow::Owned(parse_quote!(axum::Router))
+        }
+    }
+
     /// For each option does the following:
     /// 1. If the option is present in `another`, returns the populates its value from `another`
     /// 2. Otherwise, the option is populated from `self`
@@ -126,6 +133,7 @@ impl<'a> EndpointOptions<'a> {
             ok_type: another.ok_type.or(self.ok_type),
             method: another.method,
             path: another.path.or(self.path), // ok_wrapper: another.ok_wrapper.or(self::ok)
+            router: another.router.or(self.router),
         }
     }
 }

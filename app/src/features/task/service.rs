@@ -310,3 +310,11 @@ impl TaskService for SqlxTaskService {
         }
     }
 }
+
+// async fn test(con: &PgPool) -> sqlx::Result<()> {
+//     let res = sqlx::query_as!(Task, "SELECT * FROM task_with_navigation_json")
+//         .fetch_one(con)
+//         .await?;
+//     Ok(())
+// }
+

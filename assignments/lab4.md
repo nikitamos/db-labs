@@ -15,7 +15,7 @@
     3. [x] HAVING
     5. [ ] UNION
 4. Составлен пул SQL запросов для сложных операций с данными:
-    1. [ ] EXISTS
+    1. [x] EXISTS
     2. [ ] INSERT INTO SELECT
     4. [ ] CASE
     4. [ ] EXPLAIN

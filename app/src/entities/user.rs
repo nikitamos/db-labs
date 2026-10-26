@@ -4,6 +4,7 @@ use serde::Serialize;
 pub struct User {
     pub(crate) id: Option<i32>,
     pub(crate) username: String,
+    #[serde(skip)]
     pub(crate) password_hash: Option<String>,
     pub(crate) email: String,
     pub(crate) first_name: String,

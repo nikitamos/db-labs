@@ -14,4 +14,4 @@ WHERE assignee_id = $1
          FROM statuses
          WHERE id = tasks.status_id)
 ORDER BY deadline
-LIMIT 1;
+LIMIT $2;

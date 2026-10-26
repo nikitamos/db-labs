@@ -43,6 +43,7 @@ pub fn endpoints(
 
     let trait_ident = &target_trait.ident;
     let struct_name = Ident::new(&format!("{}Endpoints", trait_ident), Span::call_site());
+    let router = options.router();
 
     let new_struct = quote! {
         #target_trait
@@ -59,13 +60,13 @@ pub fn endpoints(
                       + std::marker::Sync + 'static,
                 Repo : axum::extract::FromRef<State>
             {
-                axum::Router::new()
+                #router::new()
                     #(#routes)*
             }
         }
     };
 
-    // println!("{new_struct}");
+    println!("{new_struct}");
 
     new_struct.into()
 }
@@ -139,6 +140,7 @@ fn process_fn(
         ok_type,
         method,
         path,
+        ..
     } = options;
     let t_await = if fn_item.sig.asyncness.is_some() {
         quote! {.await}

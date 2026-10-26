@@ -54,7 +54,14 @@ impl UserService for SqlxUserService {
         Ok(sqlx::query_as!(
             User,
             r#"
-                SELECT * from users
+                SELECT id,
+                     username,
+                     password_hash,
+                     email,
+                     first_name,
+                     second_name,
+                     bio
+                FROM users
                 WHERE LOWER($1) IN (LOWER(users.email), LOWER(users.username))
                 "#,
             identity
@@ -88,7 +95,14 @@ impl UserService for SqlxUserService {
         Ok(sqlx::query_as!(
             User,
             r#"
-                SELECT * FROM users
+                SELECT id,
+                     username,
+                     password_hash,
+                     email,
+                     first_name,
+                     second_name,
+                     bio
+                FROM users
                 WHERE id = $1
                 "#,
             id
@@ -108,7 +122,14 @@ impl UserService for SqlxUserService {
         let x = sqlx::query_as!(
             User,
             r#"
-              SELECT * from users
+              SELECT id,
+                     username,
+                     password_hash,
+                     email,
+                     first_name,
+                     second_name,
+                     bio
+              FROM users
               WHERE id >= $1
               ORDER BY id
               LIMIT $2
