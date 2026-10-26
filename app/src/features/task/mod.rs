@@ -23,3 +23,9 @@ pub struct UpdateTaskDto {
     pub assignee_id: Option<i32>,
     pub estimated_time: Option<i32>,
 }
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DependencyDto {
+    pub dependent: i32,
+    pub dependency: i32,
+}

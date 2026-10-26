@@ -1,5 +1,5 @@
 use super::{CreateTaskDto, UpdateTaskDto};
-use crate::{ResultExtensions, entities::{Page, PageRequest, task::Task}};
+use crate::{ResultExtensions, entities::{Page, PageRequest, task::Task}, features::task::DependencyDto};
 use aide::axum::routing::{get,delete, post};
 use axum::extract::{Json, Path, Query};
 use chrono::DateTime;
@@ -35,15 +35,13 @@ pub trait TaskService : Clone + Send + Sync + 'static{
     #[endpoint(ok=Unit, path="/{dependent}/dep/{dependency}", method=post)]
     async fn add_dependency(
         &self,
-        #[extract(Path)] dependent: i32,
-        #[extract(Path)] dependency: i32,
+        #[extract(Path)] dep: DependencyDto,
     ) -> crate::Result<()>;
 
     #[endpoint(ok=Unit, path="/{dependent}/dep/{dependency}", method=delete)]
     async fn remove_dependency(
         &self,
-        #[extract(Path)] dependent: i32,
-        #[extract(Path)] dependency: i32,
+        #[extract(Path)] dep: DependencyDto,
     ) -> crate::Result<()>;
 
 
@@ -203,7 +201,7 @@ impl TaskService for SqlxTaskService {
             .report_noop_delete("task")?)
     }
 
-    async fn add_dependency(&self, dependent: i32, dependency: i32) -> crate::Result<()> {
+    async fn add_dependency(&self, DependencyDto { dependent, dependency }: DependencyDto) -> crate::Result<()> {
         sqlx::query!(
             r#"
             INSERT INTO tasks_dependencies (dependent_id, dependency_id)
@@ -218,7 +216,7 @@ impl TaskService for SqlxTaskService {
         Ok(())
     }
 
-    async fn remove_dependency(&self, dependent: i32, dependency: i32) -> crate::Result<()> {
+    async fn remove_dependency(&self, DependencyDto { dependent, dependency }: DependencyDto) -> crate::Result<()> {
         sqlx::query!(
             r#"
             DELETE FROM tasks_dependencies
