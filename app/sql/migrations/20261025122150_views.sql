@@ -92,15 +92,17 @@ ADD COLUMN tsearchable tsvector
 GENERATED ALWAYS AS (to_tsvector('english', name || ' ' || description)) STORED;
 
 ALTER TABLE users
-ADD COLUMN tsearchable tsvector
-GENERATED ALWAYS AS (to_tsvector('english', username || ' ' || email || ' ' || first_name || ' ' || 'second_name')) STORED;
+ADD COLUMN fuzz_searchable GENERATED ALWAYS AS username || ' ' || email || ' ' || first_name || ' ' || second_name;
 
 ALTER TABLE tasks
 ADD COLUMN tsearchable tsvector
 GENERATED ALWAYS AS (to_tsvector('english', name || ' ' || description)) STORED;
 
 CREATE INDEX project_search_idx ON projects USING GIN (tsearchable);
-CREATE INDEX user_search_idx ON users USING GIN (tsearchable);
 CREATE INDEX task_search_idx ON tasks USING GIN(tsearchable);
 
+CREATE INDEX task_trgm ON tasks USING GIN (name gin_trgm_ops);
+
+
+CREATE INDEX user_trgm ON users USING GIN (fuzz_searchable gin_trgm_ops);
 CREATE INDEX task_by_assignee ON TASKS (assignee_id);
