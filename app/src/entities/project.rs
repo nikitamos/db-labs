@@ -1,8 +1,9 @@
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::entities::{Page, Relation, user::User};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub struct Project {
     pub(crate) id: Option<i32>,
     pub(crate) manager: Relation<User>,

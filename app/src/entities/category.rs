@@ -1,6 +1,7 @@
+use schemars::JsonSchema;
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub struct Category {
     pub(crate) id: Option<i32>,
     pub(crate) name: String,

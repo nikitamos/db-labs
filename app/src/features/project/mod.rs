@@ -1,8 +1,9 @@
 use crate::entities::ProjectRole;
 use chrono::Utc;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CreateProjectDto {
     pub manager_id: i32,
     pub name: String,
@@ -11,7 +12,7 @@ pub struct CreateProjectDto {
     pub deadline: chrono::DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct UpdateProjectDto {
     pub manager_id: Option<i32>,
     pub name: Option<String>,
@@ -20,13 +21,13 @@ pub struct UpdateProjectDto {
     pub deadline: Option<chrono::DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AddMemberDro {
     pub member_id: i32,
     pub role: ProjectRole
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct RemoveMemberDto {
     pub project_id: i32,
     pub user_id: i32

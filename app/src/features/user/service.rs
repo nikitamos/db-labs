@@ -1,6 +1,6 @@
+use aide::axum::routing::{delete, post,get};
 use autoendpoint::endpoints;
 use axum::extract::{Json, Path, Query};
-use axum::routing::{delete, post};
 use sqlx::PgPool;
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 
 type Unit = ();
 
-#[endpoints(error=crate::HttpError)]
+#[endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get)]
 #[async_trait::async_trait]
 pub trait UserService: Clone + Send + Sync + 'static {
     #[endpoint(path="/identity/{identity}",ok=Json::<User>)]

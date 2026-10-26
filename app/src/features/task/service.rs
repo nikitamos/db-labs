@@ -1,12 +1,13 @@
 use super::{CreateTaskDto, UpdateTaskDto};
 use crate::{ResultExtensions, entities::{Page, PageRequest, task::Task}};
-use axum::{extract::{Json, Path, Query}, routing::post};
+use aide::axum::routing::{get,delete, post};
+use axum::extract::{Json, Path, Query};
 use chrono::DateTime;
 use sqlx::PgPool;
 
 type Unit = ();
 
-#[autoendpoint::endpoints(error=crate::HttpError)]
+#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get)]
 #[async_trait::async_trait]
 pub trait TaskService : Clone + Send + Sync + 'static{
     #[endpoint(ok=Json::<Task>,path="/{id}")]
@@ -28,7 +29,7 @@ pub trait TaskService : Clone + Send + Sync + 'static{
         #[extract(Json)] body: UpdateTaskDto,
     ) -> crate::Result<Task>;
 
-    #[endpoint(ok=Unit,path="/{id}",method=axum::routing::delete)]
+    #[endpoint(ok=Unit,path="/{id}",method=delete)]
     async fn delete_task(&self, #[extract(Path)] id: i32) -> crate::Result<Unit>;
 
     #[endpoint(ok=Unit, path="/{dependent}/dep/{dependency}", method=post)]
@@ -38,7 +39,7 @@ pub trait TaskService : Clone + Send + Sync + 'static{
         #[extract(Path)] dependency: i32,
     ) -> crate::Result<()>;
 
-    #[endpoint(ok=Unit, path="/{dependent}/dep/{dependency}", method=axum::routing::delete)]
+    #[endpoint(ok=Unit, path="/{dependent}/dep/{dependency}", method=delete)]
     async fn remove_dependency(
         &self,
         #[extract(Path)] dependent: i32,

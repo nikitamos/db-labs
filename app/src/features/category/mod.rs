@@ -3,6 +3,7 @@ use axum::{
     extract::FromRef,
     routing::{delete, post},
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub mod service;
@@ -26,14 +27,14 @@ where
         )
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CreateCategoryDto {
     pub name: String,
     pub badge_color: i32,
     pub urgency: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct UpdateCategoryDto {
     pub name: Option<String>,
     pub badge_color: Option<i32>,

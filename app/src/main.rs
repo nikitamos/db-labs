@@ -1,10 +1,14 @@
 
+use aide::axum::ApiRouter;
+use aide::openapi::{Info, OpenApi};
+use aide::swagger::Swagger;
 use app::{
     AppState, config::AppConfig, features::{
         auth::service::{AuthServiceEndpoints, SqlxAuthService}, category::service::{CategoryServiceEndpoints, SqlxCategoryService}, discussion::service::{DiscussionServiceEndpoints, SqlxDiscussionService}, project::service::{ProjectServiceEndpoints, SqlxProjectService}, status::service::{SqlxStatusService, StatusServiceEndpoints}, task::service::{SqlxTaskService, TaskServiceEndpoints}, user::service::{SqlxUserService, UserServiceEndpoints},
     },
 };
-use axum::Router;
+use axum::routing::get;
+use axum::{Extension, Json};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithTonicConfig;
 use tonic::transport::ClientTlsConfig;
@@ -66,6 +70,10 @@ fn setup_otel_logging() -> SdkLoggerProvider {
         .build()
 }
 
+async fn serve_api(Extension(api): Extension<OpenApi>) -> Json<OpenApi> {
+    Json(api)
+}
+
 #[tokio::main]
 async fn main() {
     let config: AppConfig = envy::from_env().unwrap();
@@ -78,7 +86,17 @@ async fn main() {
     let state = AppState::from_config(config).await;
     let _ = state.migrate_db().with_current_subscriber().await;
 
-    let app = Router::new()
+    let mut api = OpenApi {
+        info: Info {
+            title: "DMaDBMS API".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            description: Some("Project management API".to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let app = ApiRouter::new()
         .merge(app::features::maintenance::routes())
         .nest(
             "/category",
@@ -105,7 +123,11 @@ async fn main() {
             UserServiceEndpoints::<SqlxUserService>::routes()
         )
         .nest("/task", TaskServiceEndpoints::<SqlxTaskService>::routes())
+        .route("/api.json", get(serve_api))
+        .route("/docs", Swagger::new("/api.json").axum_route())
         .layer(TraceLayer::new_for_http())
+        .finish_api(&mut api)
+        .layer(Extension(api))
         .with_state(state);
 
     axum::serve(listener, app).await.unwrap();

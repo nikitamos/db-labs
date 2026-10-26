@@ -1,11 +1,12 @@
 use super::{CreateDiscussionDto, UpdateDiscussionDto};
 use crate::{ResultExtensions, entities::{Page, PageRequest, discussion::DiscussionPost}};
-use axum::{extract::{Json, Path, Query}, routing::{delete, post}};
+use aide::axum::routing::{delete, post, get};
+use axum::extract::{Json, Path, Query};
 use sqlx::PgPool;
 
 type Unit = ();
 
-#[autoendpoint::endpoints(error=crate::HttpError)]
+#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get)]
 #[async_trait::async_trait]
 pub trait DiscussionService : Send + Sync + Clone + 'static{
     #[endpoint(ok=Json::<DiscussionPost>,path="/{id}")]

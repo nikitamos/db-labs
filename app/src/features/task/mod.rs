@@ -1,8 +1,9 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub mod service;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CreateTaskDto {
     pub project_id: i32,
     pub name: String,
@@ -13,7 +14,7 @@ pub struct CreateTaskDto {
     pub estimated_time: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct UpdateTaskDto {
     pub name: Option<String>,
     pub description: Option<String>,

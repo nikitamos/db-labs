@@ -11,7 +11,7 @@ use syn::{
 pub struct EndpointOptions<'a> {
     pub error_type: Option<Cow<'a, Type>>,
     pub ok_type: Option<Cow<'a, Type>>,
-    pub method: Cow<'a, Path>,
+    pub method: Option<Cow<'a, Path>>,
     pub path: Option<Cow<'a, LitStr>>,
     pub router: Option<Path>, // ok_wrapper: Option<Type>
 }
@@ -21,7 +21,7 @@ impl<'a> Default for EndpointOptions<'a> {
         Self {
             error_type: Default::default(),
             ok_type: Default::default(),
-            method: Cow::Owned(parse_quote!(axum::routing::get)),
+            method: None,
             path: Default::default(),
             router: None,
         }
@@ -131,7 +131,7 @@ impl<'a> EndpointOptions<'a> {
         Self {
             error_type: another.error_type.or(self.error_type),
             ok_type: another.ok_type.or(self.ok_type),
-            method: another.method,
+            method: another.method.or(self.method),
             path: another.path.or(self.path), // ok_wrapper: another.ok_wrapper.or(self::ok)
             router: another.router.or(self.router),
         }
@@ -148,7 +148,7 @@ impl<'a> Parse for EndpointOptions<'a> {
                 // TODO: is it possible to remove this allocation?
                 "error" => result.error_type = Some(Cow::Owned(kv.value.into_type()?)),
                 "ok" => result.ok_type = Some(Cow::Owned(kv.value.into_type()?)),
-                "method" => result.method = Cow::Owned(kv.value.into_path()?),
+                "method" => result.method = Some(Cow::Owned(kv.value.into_path()?)),
                 "path" => result.path = Some(Cow::Owned(kv.value.into_string()?)),
                 "router" => result.router = Some(kv.value.into_path()?),
                 _ => {

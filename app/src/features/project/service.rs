@@ -8,16 +8,15 @@ use crate::entities::project::Project;
 use crate::entities::task::Task;
 use crate::features::project::AddMemberDro;
 use crate::features::project::RemoveMemberDto;
+use aide::axum::routing::{get,delete,post};
 use axum::extract::{Json, Path, Query};
-use axum::routing::delete;
-use axum::routing::post;
 use chrono::DateTime;
 use sqlx::PgExecutor;
 use sqlx::PgPool;
 
 type Unit = ();
 
-#[autoendpoint::endpoints(error=crate::HttpError)]
+#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter,method=get)]
 #[async_trait::async_trait]
 pub trait ProjectService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Json::<Project>,path="/{id}")]

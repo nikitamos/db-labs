@@ -1,11 +1,12 @@
 use super::{CreateStatusDto, UpdateStatusDto};
 use crate::{ResultExtensions, entities::{Page, PageRequest, status::Status}};
-use axum::{extract::{Json, Path, Query}, routing::{delete, post}};
+use aide::axum::routing::{delete, post, get};
+use axum::extract::{Json, Path, Query};
 use sqlx::PgPool;
 
 type Unit = ();
 
-#[autoendpoint::endpoints(error=crate::HttpError)]
+#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get)]
 #[async_trait::async_trait]
 pub trait StatusService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Json::<Status>,path="/{id}")]

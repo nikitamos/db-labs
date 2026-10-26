@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub mod category;
@@ -9,7 +10,7 @@ pub mod status;
 pub mod task;
 pub mod user;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct PageRequest<Oft: Ord + Default = i32> {
     pub limit: i64,
     pub offset: Oft,
@@ -24,7 +25,7 @@ impl Default for PageRequest {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub struct Relation<R> {
     pub id: i32,
     #[serde(rename = "referee")]
@@ -61,7 +62,7 @@ impl<Oft: Ord + Default> PageRequest<Oft> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Page<T, Oft: Ord + Default = i32> {
     pub items: Vec<T>,
     #[serde(rename = "next_page")]
@@ -87,7 +88,7 @@ impl<T, Oft: Ord + Default> Page<T, Oft> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, sqlx::Type)]
 #[sqlx(type_name = "ProjectRole", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectRole {

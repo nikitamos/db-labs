@@ -3,8 +3,8 @@ use std::borrow::Cow;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::{
-    Attribute, Error, FnArg, ItemTrait, LitStr, Meta, Pat, ReceiverKind, TraitItemFn,
-    Type, parse_macro_input, spanned::Spanned,
+    Attribute, Error, FnArg, ItemTrait, LitStr, Meta, Pat, ReceiverKind, TraitItemFn, Type,
+    parse_macro_input, parse_quote, spanned::Spanned,
 };
 
 mod opts;
@@ -96,6 +96,10 @@ fn process_fn(
     }
     options.require_valid(attr.span())?;
 
+    // A custom router (e.g. `aide::axum::ApiRouter`) is documented by using
+    // `api_route` instead of `route`, and defaults to aide's routing helpers.
+    let is_api_router = options.router.is_some();
+
     // Gather extractors
     let receiver = fn_item
         .sig
@@ -160,8 +164,14 @@ fn process_fn(
             ))
         }
     };
-    let route = quote! {
-        .route(#path, #method(Self::#fn_name))
+    let route = if is_api_router {
+        quote! {
+            .api_route(#path, #method(Self::#fn_name))
+        }
+    } else {
+        quote! {
+            .route(#path, #method(Self::#fn_name))
+        }
     };
 
     Ok(Some(ParsedEndpoint {

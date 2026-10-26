@@ -1,10 +1,11 @@
 
 use chrono::{NaiveDateTime};
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::entities::{Relation, status::Status, user::User};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub struct Task {
     pub(crate) id: Option<i32>,
     pub(crate) name: String,

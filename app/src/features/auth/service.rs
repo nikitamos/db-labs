@@ -1,8 +1,6 @@
+use aide::axum::routing::{post, get};
 use autoendpoint::endpoints;
-use axum::{
-    extract::{Json, Path},
-    routing::post,
-};
+use axum::extract::{Json, Path};
 use sqlx::PgPool;
 
 use crate::{
@@ -17,7 +15,7 @@ use crate::{
 
 type Unit = ();
 
-#[endpoints(error=crate::HttpError)]
+#[endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get)]
 #[async_trait::async_trait]
 pub trait AuthService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Json::<User>, path="/signup", method=post)]

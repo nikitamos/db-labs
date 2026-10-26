@@ -1,6 +1,7 @@
+use schemars::JsonSchema;
 use serde::Serialize;
 
-#[derive(sqlx::FromRow, Debug, Serialize)]
+#[derive(sqlx::FromRow, Debug, Serialize, JsonSchema)]
 pub struct User {
     pub(crate) id: Option<i32>,
     pub(crate) username: String,

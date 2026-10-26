@@ -120,9 +120,10 @@ impl AppState {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, schemars::JsonSchema)]
 pub struct HttpError {
     #[serde(serialize_with = "serialize_status")]
+    #[schemars(with = "u16")]
     pub code: StatusCode,
     pub details: String,
 }
@@ -139,6 +140,29 @@ impl HttpError {
 impl IntoResponse for HttpError {
     fn into_response(self) -> axum::response::Response {
         (self.code, Json(self)).into_response()
+    }
+}
+
+impl aide::OperationOutput for HttpError {
+    type Inner = Self;
+
+    fn operation_response(
+        ctx: &mut aide::generate::GenContext,
+        operation: &mut aide::openapi::Operation,
+    ) -> Option<aide::openapi::Response> {
+        let mut response =
+            <Json<Self> as aide::OperationOutput>::operation_response(ctx, operation)?;
+        response.description = "Error response".to_string();
+        Some(response)
+    }
+
+    fn inferred_responses(
+        ctx: &mut aide::generate::GenContext,
+        operation: &mut aide::openapi::Operation,
+    ) -> Vec<(Option<u16>, aide::openapi::Response)> {
+        Self::operation_response(ctx, operation)
+            .map(|response| vec![(None, response)])
+            .unwrap_or_default()
     }
 }
 
