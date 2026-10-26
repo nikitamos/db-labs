@@ -150,6 +150,7 @@ impl<'a> Parse for EndpointOptions<'a> {
                 "ok" => result.ok_type = Some(Cow::Owned(kv.value.into_type()?)),
                 "method" => result.method = Cow::Owned(kv.value.into_path()?),
                 "path" => result.path = Some(Cow::Owned(kv.value.into_string()?)),
+                "router" => result.router = Some(kv.value.into_path()?),
                 _ => {
                     return Err(Error::new(
                         kv.key.span(),

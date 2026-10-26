@@ -54,7 +54,7 @@ pub fn endpoints(
         impl <Repo: #trait_ident> #struct_name<Repo> {
             #(#functions)*
 
-            pub fn routes<State>() -> axum::Router<State>
+            pub fn routes<State>() -> #router<State>
             where
                 State : std::clone::Clone + std::marker::Send
                       + std::marker::Sync + 'static,
