@@ -1,6 +1,3 @@
--- Returns data to build Kanban-like table (each column corresponds to some status
--- and contains tasks of that status)
-
 SELECT * from statuses
 FULL OUTER JOIN tasks ON tasks.status_id = statuses.id
 WHERE ($1 IS NULL
