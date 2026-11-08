@@ -88,18 +88,32 @@ FOR EACH ROW EXECUTE FUNCTION remove_member_from_project();
 
 
 --
-CREATE FUNCTION validate_assignee_is_member RETURN trigger AS $$
+CREATE OR REPLACE FUNCTION validate_assignee_is_member() RETURNS trigger AS $$
+DECLARE
+role ProjectRole;
 BEGIN
--- validates that the employee being assigned to task is a member of the project
+    -- validates that the employee being assigned to task is a member of the project and not an observer
+    -- TODO: authorize.
+
+    SELECT project_role INTO role
+    FROM project_members
+    WHERE user_id = NEW.assignee_id AND project_id = NEW.project_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Can not assign non-project-member to the task';
+    ELSEIF role = 'observer' THEN
+        RAISE EXCEPTION 'Can not assign observer to the task';
+    END IF;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE TRIGGER trg_task_assignee_membership
-BEFORE INSERT OR UPDATE ON tasks
+CREATE OR REPLACE TRIGGER trg_task_assignee_membership
+AFTER INSERT OR UPDATE ON tasks
 FOR EACH ROW EXECUTE FUNCTION validate_assignee_is_member();
 
-
+--
 CREATE FUNCTION set_task_from_parent RETURN trigger AS $$
 BEGIN
 -- validates that the employee being assigned to task is a member of the project
