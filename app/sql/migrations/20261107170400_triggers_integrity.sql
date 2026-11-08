@@ -46,10 +46,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE TRIGGER trg_project_manager_membership AFTER
-INSERT
-OR
-UPDATE ON projects
+CREATE OR REPLACE TRIGGER trg_project_manager_membership
+AFTER INSERT OR UPDATE ON projects
 FOR EACH ROW EXECUTE FUNCTION add_manager_to_project();
 
 --
@@ -110,7 +108,7 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE TRIGGER trg_task_assignee_membership
-AFTER INSERT OR UPDATE ON tasks
+BEFORE INSERT OR UPDATE ON tasks
 FOR EACH ROW EXECUTE FUNCTION validate_assignee_is_member();
 
 CREATE OR REPLACE FUNCTION validate_post_author_is_project_member RETURNS trigger AS $$
@@ -136,7 +134,7 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE TRIGGER trg_validate_post_author_is_project_member
-AFTER UPDATE OR INSERT ON discussion_posts
+BEFORE UPDATE OR INSERT ON discussion_posts
 FOR EACH ROW EXECUTE FUNCTION validate_post_author_is_project_member();
 
 -- todo: forbid history modifications
@@ -169,28 +167,50 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE TRIGGER trg_validate_no_message_cycles
-AFTER UPDATE ON discussion_posts
+CREATE OR REPLACE TRIGGER trg_validate_no_message_cycles
+BEFORE UPDATE ON discussion_posts
 FOR EACH ROW EXECUTE FUNCTION trg_validate_no_message_cycles();
 
 
-CREATE FUNCTION validate_task_deadline_within_project RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION validate_task_deadline_within_project_task_update() RETURNS trigger AS $$ DECLARE
+DECLARE project_deadline TIMESTAMP;
 BEGIN
--- validates that the task's deadline ends before the project's one
+    SELECT deadline FROM projects INTO project_deadline
+    WHERE id = NEW.project_id;
+    IF NEW.deadline > project_deadline THEN
+        RAISE EXCEPTION 'Task deadline must happen before project deadline';
+    END IF;
+
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE TRIGGER trg_validate_task_deadline_within_project
-BEFORE
-UPDATE
-OR
-INSERT ON tasks
-FOR EACH ROW EXECUTE FUNCTION validate_task_deadline_within_project();
+CREATE OR REPLACE TRIGGER trg_validate_task_deadline_within_project_task_update
+BEFORE UPDATE OR INSERT ON tasks
+FOR EACH ROW EXECUTE FUNCTION validate_task_deadline_within_project_task_update();
+
+CREATE OR REPLACE FUNCTION validate_task_deadline_within_project_proj_update() RETURNS trigger AS $$ DECLARE
+DECLARE task_deadline TIMESTAMP;
+BEGIN
+    SELECT MAX(deadline) FROM tasks INTO task_deadline
+    WHERE project_id = NEW.id;
+    IF NEW.deadline < task_deadline THEN
+        RAISE EXCEPTION 'Task deadline must happen before project deadline';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE TRIGGER trg_validate_task_deadline_within_project_proj_update
+BEFORE UPDATE OR INSERT ON projects
+FOR EACH ROW EXECUTE FUNCTION validate_task_deadline_within_project_proj_update();
 
 -- todo: shift of dependency's deadline
 
-CREATE FUNCTION validate_dependencies_belong_to_same_project RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION validate_dependencies_belong_to_same_project() RETURNS trigger AS $$
 BEGIN
 -- validates that task and its dependency are belonging to the same project
 END;
