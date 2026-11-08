@@ -208,20 +208,29 @@ CREATE OR REPLACE TRIGGER trg_validate_task_deadline_within_project_proj_update
 BEFORE UPDATE OR INSERT ON projects
 FOR EACH ROW EXECUTE FUNCTION validate_task_deadline_within_project_proj_update();
 
--- todo: shift of dependency's deadline
-
 CREATE OR REPLACE FUNCTION validate_dependencies_belong_to_same_project() RETURNS trigger AS $$
+DECLARE
+dependency_project int;
+dependent_project int;
 BEGIN
--- validates that task and its dependency are belonging to the same project
+    -- validates that task and its dependency are belong to the same project
+    SELECT project_id FROM tasks INTO dependency_project
+    WHERE id = NEW.dependency_id;
+
+    SELECT project_id FROM tasks INTO dependent_project
+    WHERE id = NEW.dependent_id;
+
+    IF dependency_project <> dependent_project THEN
+        RAISE EXCEPTION 'Tasks with dependencies must belong to the same project';
+    END IF;
+
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 
 CREATE TRIGGER trg_validate_dependencies_belong_to_same_project
-BEFORE
-INSERT
-OR
-UPDATE ON task_dependencies
+BEFORE INSERT OR UPDATE ON tasks_dependencies
 FOR EACH ROW EXECUTE FUNCTION validate_dependencies_belong_to_same_project();
 
 -- todo: constraint to forbid self-dependencies
