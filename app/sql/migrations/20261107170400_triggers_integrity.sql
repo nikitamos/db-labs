@@ -141,16 +141,36 @@ FOR EACH ROW EXECUTE FUNCTION validate_post_author_is_project_member();
 
 -- todo: forbid history modifications
 
-CREATE FUNCTION validate_no_message_cycles RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION validate_no_message_cycles() RETURNS trigger AS $$
+DECLARE
+parent_created_at TIMESTAMP;
 BEGIN
--- validates that each of the message's parents does not refer to the message
+    -- validates that each of the message's parents does not refer to the message
+
+    -- TODO: is there a better way to ensure immutability?
+    IF NEW.created_at <> OLD.created_at THEN 
+        RAISE EXCEPTION 'It is forbidden to update creation time of the post';
+    END IF;
+
+    IF NEW.parent <> OLD.parent THEN
+        RAISE EXCEPTION 'It is forbidden to reparent posts';
+    END IF;
+
+    SELECT created_at FROM discussion_posts
+    INTO parent_created_at
+    WHERE id = NEW.parent_id;
+
+    IF NEW.created_at > parent_created_at THEN
+        RAISE EXCEPTION 'Child can not be created before parent: potential post cycle detected';
+    END IF;
+
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 
 CREATE TRIGGER trg_validate_no_message_cycles
-BEFORE
-UPDATE ON discussion_posts
+AFTER UPDATE ON discussion_posts
 FOR EACH ROW EXECUTE FUNCTION trg_validate_no_message_cycles();
 
 
