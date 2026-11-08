@@ -113,26 +113,30 @@ CREATE OR REPLACE TRIGGER trg_task_assignee_membership
 AFTER INSERT OR UPDATE ON tasks
 FOR EACH ROW EXECUTE FUNCTION validate_assignee_is_member();
 
---
-CREATE FUNCTION set_task_from_parent RETURN trigger AS $$
+CREATE OR REPLACE FUNCTION validate_post_author_is_project_member RETURNS trigger AS $$
+DECLARE
+project int;
 BEGIN
--- validates that the employee being assigned to task is a member of the project
+    -- validates that the poster on the task is member of the project
+
+    SELECT project_id INTO project
+    FROM tasks
+    WHERE id = NEW.task_id;
+
+    PERFORM * FROM project_members pm
+    WHERE pm.user_id = NEW.author_id AND pm.project_id = project;
+
+    IF NOT FOUND
+        RAISE EXCEPTION 'Non-project member can not participate in discussion';
+    END IF;
+
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE FUNCTION validate_post_author_is_project_member RETURNS trigger AS $$
-BEGIN
--- validates that the poster on the task is member of the project
-END;
-$$ LANGUAGE plpgsql;
-
-
-CREATE TRIGGER trg_validate_post_author_is_project_member
-BEFORE
-UPDATE
-OR
-INSERT ON discussion_posts
+CREATE OR REPLACE TRIGGER trg_validate_post_author_is_project_member
+AFTER UPDATE OR INSERT ON discussion_posts
 FOR EACH ROW EXECUTE FUNCTION validate_post_author_is_project_member();
 
 -- todo: forbid history modifications
