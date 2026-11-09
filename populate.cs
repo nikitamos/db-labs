@@ -276,7 +276,7 @@ try
                 ProjectId: project.Id,
                 Name: Truncate(faker.Commerce.ProductName(), 64),
                 Description: Truncate(faker.Lorem.Sentences(2), 1024),
-                Deadline: now.AddDays(-faker.Random.Int(1, 5)),
+                Deadline: now.AddDays(-faker.Random.Int(35, 45)),
                 StatusId: statusId,
                 AssigneeId: assigneeId,
                 EstimatedTime: faker.Random.Int(30, 600)));

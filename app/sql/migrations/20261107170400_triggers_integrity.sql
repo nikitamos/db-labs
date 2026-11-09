@@ -13,6 +13,9 @@ ORDER BY roles.name;
 CREATE OR REPLACE FUNCTION check_permission(for_user_id int, req_permission_name VARCHAR) RETURNS BOOLEAN AS $$
 BEGIN
 
+-- TODO: remove it when the application layer is implemented
+IF for_user_id = 0 THEN RETURN TRUE; END IF;
+
 PERFORM 1 FROM user_permissions p
 WHERE for_user_id = p.user_id
     AND p.permission_name = req_permission_name;
@@ -160,7 +163,6 @@ CREATE OR REPLACE TRIGGER trg_validate_post_author_is_project_member
 BEFORE UPDATE OR INSERT ON discussion_posts
 FOR EACH ROW EXECUTE FUNCTION validate_post_author_is_project_member();
 
--- todo: forbid history modifications
 
 CREATE OR REPLACE FUNCTION validate_no_message_cycles() RETURNS trigger AS $$
 DECLARE
@@ -259,6 +261,11 @@ FOR EACH ROW EXECUTE FUNCTION validate_dependencies_belong_to_same_project();
 CREATE OR REPLACE FUNCTION validate_task_dependencies_no_cycles() RETURNS trigger AS $$
 BEGIN
 -- Validates that there are no cycles in the task dependency graph
+PERFORM * FROM task_dependencies(NEW.dependency_id)
+WHERE task_id = NEW.dependent_id;
+IF FOUND THEN
+    RAISE EXCEPTION 'attempt to create task cycle';
+END IF;
 RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

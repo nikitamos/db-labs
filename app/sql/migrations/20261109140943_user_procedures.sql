@@ -18,19 +18,16 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 BEGIN
-
-    -- IF NOT check_permission(actor_id, requested_permission) THEN
-    --     RAISE EXCEPTION
-    --         'permission denied: user % lacks permission %',
-    --         actor_id,
-    --         requested_permission
-    --         USING ERRCODE = '42501';
-    -- END IF;
+    IF NOT check_permission(actor_id, requested_permission) THEN
+        RAISE EXCEPTION
+            'permission denied: user % lacks permission %',
+            actor_id,
+            requested_permission
+            USING ERRCODE = '42501';
+    END IF;
 END;
 $$;
 
-COMMENT ON FUNCTION authorize_for(integer, varchar) IS
-    'Raises an insufficient-privilege exception when actor_id lacks requested_permission.';
 
 -- ---------------------------------------------------------------------------
 -- users
