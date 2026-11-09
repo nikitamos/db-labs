@@ -8,7 +8,6 @@ INNER JOIN permissions ON permissions.id=role_permissions.permission_id
 INNER JOIN roles ON roles.id=role_permissions.role_id
 ORDER BY roles.name;
 
--- COMMON FUNCTIONS --
 
 CREATE OR REPLACE FUNCTION check_permission(for_user_id int, req_permission_name VARCHAR) RETURNS BOOLEAN AS $$
 BEGIN
@@ -46,7 +45,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- TRIGGERS --
- --
 
 CREATE OR REPLACE FUNCTION add_manager_to_project() RETURNS trigger AS $$
 BEGIN
@@ -57,7 +55,6 @@ BEGIN
 
 IF NOT check_permission(NEW.manager_id, 'manage_projects') THEN
         RAISE EXCEPTION 'insufficient manager permission';
-        RETURN OLD; -- is it required?
     END IF;
 
 
@@ -84,10 +81,6 @@ DECLARE
 active_tasks int;
 BEGIN
 -- validates that the user is not manager and has no opened tasks
--- todo: authorize
-
--- SELECT * INTO project
--- FROM projects WHERE manager_id = OLD.user_id;
 
 IF OLD.project_role = 'manager' THEN
     RAISE EXCEPTION 'Can not delete manager';
@@ -117,7 +110,6 @@ DECLARE
 role ProjectRole;
 BEGIN
     -- validates that the employee being assigned to task is a member of the project and not an observer
-    -- TODO: authorize.
 
     SELECT project_role INTO role
     FROM project_members
@@ -276,7 +268,6 @@ BEFORE
 INSERT ON tasks_dependencies
 FOR EACH ROW EXECUTE FUNCTION validate_task_dependencies_no_cycles();
 
--- todo: constraint to forbid pending and ready
 
 CREATE OR REPLACE FUNCTION all_dependencies_ready(of_task_id int) RETURNS BOOLEAN AS $$ DECLARE all_ready bool DEFAULT true;
 BEGIN
@@ -340,5 +331,3 @@ CREATE OR REPLACE TRIGGER trg_validate_dependent_not_ready
 BEFORE
 INSERT ON tasks_dependencies
 FOR EACH ROW EXECUTE FUNCTION validate_dependent_not_ready();
-
--- Block of procedures
