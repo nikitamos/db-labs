@@ -1,3 +1,4 @@
+-- Returns tasks of employee with missed deadlines
 SELECT *
 FROM tasks
 WHERE assignee_id = $1

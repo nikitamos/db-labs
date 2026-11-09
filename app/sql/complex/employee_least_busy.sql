@@ -1,3 +1,4 @@
+-- Returns employees with least amount of tasks among all projects.
 SELECT assignee_id,
        COUNT(*) AS task_count
 FROM tasks

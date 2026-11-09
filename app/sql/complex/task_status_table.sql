@@ -1,3 +1,4 @@
+-- Returns tasks belonging to the project or user with their respective statuses.
 SELECT * from statuses
 FULL OUTER JOIN tasks ON tasks.status_id = statuses.id
 WHERE ($1 IS NULL

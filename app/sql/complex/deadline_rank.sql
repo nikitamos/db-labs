@@ -1,3 +1,5 @@
+-- Returns employees and tasks of the project ordered by deadlines.
+-- Additionally calculates spare time before the deadline.
 SELECT t1.id AS task_id,
        t1.assignee_id,
        row_number() OVER w AS deadline_rank,

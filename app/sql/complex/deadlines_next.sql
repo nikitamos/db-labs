@@ -1,3 +1,4 @@
+-- Returns non-ready tasks with closest deadlines
 SELECT id,
        name,
        description,
