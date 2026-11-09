@@ -52,7 +52,7 @@ FOR EACH ROW EXECUTE FUNCTION add_manager_to_project();
 
 --
 
-CREATE FUNCTION remove_member_from_project() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION remove_member_from_project() RETURNS trigger AS $$
 DECLARE
 -- record project projects%ROWTYPE;
 active_tasks int;
@@ -111,7 +111,7 @@ CREATE OR REPLACE TRIGGER trg_task_assignee_membership
 BEFORE INSERT OR UPDATE ON tasks
 FOR EACH ROW EXECUTE FUNCTION validate_assignee_is_member();
 
-CREATE OR REPLACE FUNCTION validate_post_author_is_project_member RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION validate_post_author_is_project_member() RETURNS trigger AS $$
 DECLARE
 project int;
 BEGIN
@@ -124,7 +124,7 @@ BEGIN
     PERFORM * FROM project_members pm
     WHERE pm.user_id = NEW.author_id AND pm.project_id = project;
 
-    IF NOT FOUND
+IF NOT FOUND THEN
         RAISE EXCEPTION 'Non-project member can not participate in discussion';
     END IF;
 
@@ -145,7 +145,6 @@ parent_created_at TIMESTAMP;
 BEGIN
     -- validates that each of the message's parents does not refer to the message
 
-    -- TODO: is there a better way to ensure immutability?
     IF NEW.created_at <> OLD.created_at THEN 
         RAISE EXCEPTION 'It is forbidden to update creation time of the post';
     END IF;
@@ -169,7 +168,8 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE TRIGGER trg_validate_no_message_cycles
 BEFORE UPDATE ON discussion_posts
-FOR EACH ROW EXECUTE FUNCTION trg_validate_no_message_cycles();
+
+FOR EACH ROW EXECUTE FUNCTION validate_no_message_cycles();
 
 
 CREATE OR REPLACE FUNCTION validate_task_deadline_within_project_task_update() RETURNS trigger AS $$ DECLARE
@@ -229,55 +229,85 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE TRIGGER trg_validate_dependencies_belong_to_same_project
+CREATE OR REPLACE TRIGGER trg_validate_dependencies_belong_to_same_project
 BEFORE INSERT OR UPDATE ON tasks_dependencies
 FOR EACH ROW EXECUTE FUNCTION validate_dependencies_belong_to_same_project();
 
--- todo: constraint to forbid self-dependencies
-
-CREATE FUNCTION validate_task_dependencies_no_cycles RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION validate_task_dependencies_no_cycles() RETURNS trigger AS $$
 BEGIN
 -- Validates that there are no cycles in the task dependency graph
 END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE TRIGGER trg_validate_task_dependencies_no_cycles
+CREATE OR REPLACE TRIGGER trg_validate_task_dependencies_no_cycles
 BEFORE
-INSERT ON task_dependencies
+INSERT ON tasks_dependencies
 FOR EACH ROW EXECUTE FUNCTION validate_task_dependencies_no_cycles();
-
-
-CREATE FUNCTION task_dependents_deadline_shift RETURNS trigger AS $$
-BEGIN
--- Shifts deadlines of the dependent tasks when its final dependency with missed deadline is marked ready
-END;
-$$ LANGUAGE plpgsql;
-
-
-CREATE TRIGGER trg_task_dependents_deadline_shift AFTER
-UPDATE ON tasks
-FOR EACH ROW EXECUTE FUNCTION task_dependents_deadline_shift();
 
 -- todo: constraint to forbid pending and ready
 
-CREATE FUNCTION validate_task_dependencies_ready RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION all_dependencies_ready(task_id int) RETURNS BOOLEAN AS $$ DECLARE all_ready bool DEFAULT true;
 BEGIN
--- before marking the task as ready, checks that all its dependencies are ready
+
+SELECT bool_and(s.ready)
+FROM tasks t INTO all_ready
+JOIN statuses s ON s.id = t.status_id
+WHERE t.id IN
+        (SELECT dependency_id
+         FROM task_dependencies
+         WHERE dependent_id = task_id);
+
+RETURN all_ready;
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION validate_task_dependencies_ready() RETURNS trigger AS $$ DECLARE new_ready BOOLEAN; BEGIN -- before marking the task as ready, checks that all its dependencies are ready
+ -- For dependencies in order to be ready, their transitive dependencies also
+ -- must be ready. Thus we don't need to traverse the whole graph
+ 
+SELECT ready
+FROM statuses INTO new_ready 
+WHERE id = NEW.status_id; IF new_ready THEN IF NOT all_dependencies_ready(NEW.id) THEN RAISE 
+    EXCEPTION 'Can not mark task ready: unsatisfied dependencies';
 
-CREATE FUNCTION validate_dependent_not_ready RETURNS trigger AS $$
+END IF;
+
+END IF;
+
+RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trg_validate_task_dependencies_ready
+BEFORE
+INSERT
+OR
+UPDATE ON tasks
+FOR EACH ROW EXECUTE FUNCTION validate_task_dependencies_ready();
+
+CREATE OR REPLACE FUNCTION validate_dependent_not_ready() RETURNS trigger AS $$ DECLARE new_ready BOOL;
 BEGIN
 -- validates that depending task is not ready when adding a non-ready dependency
+
+SELECT ready
+FROM statuses INTO new_ready
+JOIN tasks t ON t.status_id = id
+WHERE t.id = NEW.dependent_id;
+
+IF new_ready THEN RAISE
+EXCEPTION 'Can not add dependencies to ready task';
+
+END IF;
+
+RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE TRIGGER trg_validate_dependent_not_ready
+CREATE OR REPLACE TRIGGER trg_validate_dependent_not_ready
 BEFORE
-INSERT ON task_dependencies
+INSERT ON tasks_dependencies
 FOR EACH ROW EXECUTE FUNCTION validate_dependent_not_ready();
 
 -- Block of procedures
