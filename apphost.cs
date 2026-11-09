@@ -14,7 +14,7 @@ var postgres =
 var db = postgres.AddDatabase("app-db");
 
 builder.AddRustApp("backend", "./app")
-    .WithHttpEndpoint(env: "PORT")
+    .WithHttpEndpoint(env: "PORT", port: 6200)
     .WithHttpHealthCheck("/health")
     .WithReference(db)
     .WithCertificateTrustScope(CertificateTrustScope.System)
