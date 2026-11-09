@@ -7,7 +7,7 @@
 // Requirements: .NET 10+
 // Run:
 //   dotnet run populate.cs
-//   dotnet run populate.cs -- --base-url http://localhost:44761
+//   dotnet run populate.cs -- --base-url http://localhost:6200
 //   dotnet run populate.cs -- --count 60
 //   dotnet run populate.cs -- --no-reset
 //
@@ -140,6 +140,7 @@ try
     // ------------------------------------------------------------------
     Console.WriteLine($"Creating {recordCount} statuses...");
     var statusIds = new List<int>();
+    var statusReady = new Dictionary<int, bool>();
     var usedStatusColors = new HashSet<int>();
 
     for (var i = 0; i < recordCount; i++)
@@ -159,7 +160,17 @@ try
                     Pending: ready ? false: faker.Random.Int(0, 3) == 0);
         var created = await api.PostAsync<EntityId>("/status", new_status);
 
-        statusIds.Add(created.RequireId());
+        var statusId = created.RequireId();
+        statusIds.Add(statusId);
+        statusReady[statusId] = ready;
+    }
+
+    var nonReadyStatusIds = statusIds
+        .Where(id => !statusReady[id])
+        .ToList();
+    if (nonReadyStatusIds.Count == 0)
+    {
+        nonReadyStatusIds = statusIds;
     }
 
     // ------------------------------------------------------------------
@@ -168,6 +179,8 @@ try
     // ------------------------------------------------------------------
     Console.WriteLine($"Creating {recordCount} projects...");
     var projects = new List<ProjectSeed>();
+    var projectMemberIds = new Dictionary<int, List<int>>();
+    var projectAssigneeIds = new Dictionary<int, List<int>>();
     var now = DateTime.UtcNow;
 
     for (var i = 0; i < recordCount; i++)
@@ -185,7 +198,10 @@ try
             StartTime: startTime,
             Deadline: deadline));
 
-        projects.Add(new ProjectSeed(created.RequireId(), manager.Id));
+        var projectId = created.RequireId();
+        projects.Add(new ProjectSeed(projectId, manager.Id));
+        projectMemberIds[projectId] = [manager.Id];
+        projectAssigneeIds[projectId] = [manager.Id];
     }
 
     Console.WriteLine("Adding project members...");
@@ -208,6 +224,12 @@ try
                 $"/project/{project.Id}/member",
                 new AddMemberDto(MemberId: extras[i].Id, Role: role));
 
+            projectMemberIds[project.Id].Add(extras[i].Id);
+            if (role != ProjectRole.Observer)
+            {
+                projectAssigneeIds[project.Id].Add(extras[i].Id);
+            }
+
             extraMemberCount++;
         }
     }
@@ -217,18 +239,53 @@ try
     // ------------------------------------------------------------------
     Console.WriteLine($"Creating {recordCount} tasks...");
     var taskIds = new List<int>();
-    for (var i = 0; i < recordCount; i++)
-    {
-        var created = await api.PostAsync<EntityId>("/task", new CreateTaskDto(
-            ProjectId: faker.PickRandom(projects).Id,
-            Name: Truncate(faker.Commerce.ProductName(), 64),
-            Description: Truncate(faker.Lorem.Sentences(2), 1024),
-            Deadline: now.AddDays(faker.Random.Int(1, 120)),
-            StatusId: faker.PickRandom(statusIds),
-            AssigneeId: faker.PickRandom(users).Id,
-            EstimatedTime: faker.Random.Int(30, 600)));
+    var taskProjectIds = new Dictionary<int, int>();
+    var tasksByProject = new Dictionary<int, List<int>>();
 
-        taskIds.Add(created.RequireId());
+    // Use a subset of projects so each has several tasks. This allows all
+    // task dependencies to point to tasks in the same project.
+    var taskProjectCount = Math.Max(
+        1,
+        Math.Min(projects.Count, recordCount / 6));
+    var taskProjects = projects
+        .OrderBy(_ => faker.Random.Guid())
+        .Take(taskProjectCount)
+        .ToList();
+
+    var tasksPerProject = recordCount / taskProjects.Count;
+    var extraTasks = recordCount % taskProjects.Count;
+
+    for (var projectIndex = 0; projectIndex < taskProjects.Count; projectIndex++)
+    {
+        var project = taskProjects[projectIndex];
+        var projectTaskIds = new List<int>();
+        tasksByProject[project.Id] = projectTaskIds;
+
+        var projectTaskCount =
+            tasksPerProject + (projectIndex < extraTasks ? 1 : 0);
+        for (var taskIndex = 0; taskIndex < projectTaskCount; taskIndex++)
+        {
+            // Tasks that will have dependants must not be in a ready status.
+            var isDependent = taskIndex < projectTaskCount - 1;
+            var statusId = isDependent
+                ? faker.PickRandom(nonReadyStatusIds)
+                : faker.PickRandom(statusIds);
+            var assigneeId = faker.PickRandom(projectAssigneeIds[project.Id]);
+
+            var created = await api.PostAsync<EntityId>("/task", new CreateTaskDto(
+                ProjectId: project.Id,
+                Name: Truncate(faker.Commerce.ProductName(), 64),
+                Description: Truncate(faker.Lorem.Sentences(2), 1024),
+                Deadline: now.AddDays(-faker.Random.Int(1, 5)),
+                StatusId: statusId,
+                AssigneeId: assigneeId,
+                EstimatedTime: faker.Random.Int(30, 600)));
+
+            var taskId = created.RequireId();
+            taskIds.Add(taskId);
+            taskProjectIds[taskId] = project.Id;
+            projectTaskIds.Add(taskId);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -251,18 +308,26 @@ try
     }
 
     // ------------------------------------------------------------------
-    // 8. Task dependencies (one dependency per task).
+    // 8. Task dependencies. Every dependency points to another task in the
+    //    same project. The chain plus one extra edge stays acyclic.
     // ------------------------------------------------------------------
     Console.WriteLine("Creating task dependencies...");
     var dependencyCount = 0;
-    if (taskIds.Count > 1)
+    foreach (var project in taskProjects)
     {
-        for (var i = 0; i < taskIds.Count; i++)
-        {
-            var dependentId = taskIds[i];
-            var dependencyId = taskIds[(i + 1) % taskIds.Count];
+        var projectTaskIds = tasksByProject[project.Id];
 
-            await api.PostEmptyAsync($"/task/{dependentId}/dep/{dependencyId}");
+        for (var i = 0; i + 1 < projectTaskIds.Count; i++)
+        {
+            await api.PostEmptyAsync(
+                $"/task/{projectTaskIds[i]}/dep/{projectTaskIds[i + 1]}");
+            dependencyCount++;
+        }
+
+        if (projectTaskIds.Count >= 3)
+        {
+            await api.PostEmptyAsync(
+                $"/task/{projectTaskIds[0]}/dep/{projectTaskIds[2]}");
             dependencyCount++;
         }
     }
@@ -272,22 +337,35 @@ try
     // ------------------------------------------------------------------
     Console.WriteLine($"Creating {recordCount} discussion posts...");
     var postIds = new List<int>();
+    var postsByTask = new Dictionary<int, List<int>>();
+
     for (var i = 0; i < recordCount; i++)
     {
-        int? parentId = null;
-        if (postIds.Count >= 5 && faker.Random.Int(0, 99) < 35)
+        var taskId = faker.PickRandom(taskIds);
+        var projectId = taskProjectIds[taskId];
+
+        if (!postsByTask.TryGetValue(taskId, out var taskPosts))
         {
-            parentId = faker.PickRandom(postIds);
+            taskPosts = [];
+            postsByTask[taskId] = taskPosts;
+        }
+
+        int? parentId = null;
+        if (taskPosts.Count > 0 && faker.Random.Int(0, 99) < 35)
+        {
+            parentId = faker.PickRandom(taskPosts);
         }
 
         var created = await api.PostAsync<EntityId>("/discussion", new CreateDiscussionDto(
-            TaskId: faker.PickRandom(taskIds),
-            AuthorId: faker.PickRandom(users).Id,
+            TaskId: taskId,
+            AuthorId: faker.PickRandom(projectMemberIds[projectId]),
             Title: Truncate(faker.Lorem.Sentence(4), 48),
             Body: Truncate(faker.Lorem.Sentences(2), 512),
             ParentId: parentId));
 
-        postIds.Add(created.RequireId());
+        var postId = created.RequireId();
+        postIds.Add(postId);
+        taskPosts.Add(postId);
     }
 
     Console.WriteLine();
@@ -321,7 +399,7 @@ static void PrintUsage()
         Usage: dotnet run populate.cs -- [options]
 
         Options:
-          --base-url <url>  Base URL of the API (default: http://localhost:44761)
+          --base-url <url>  Base URL of the API (default: http://localhost:6200)
           --count <n>       Records per main table (default: 60)
           --no-reset        Do not call POST /db_reset before seeding
           -h, --help        Show this help
