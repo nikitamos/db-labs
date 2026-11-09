@@ -23,6 +23,9 @@ use crate::{
     },
 };
 
+/// Temporary actor id until JWT extraction supplies the authenticated user.
+pub const ACTOR_ID: i32 = 0;
+
 pub mod config;
 pub mod entities;
 pub mod features {

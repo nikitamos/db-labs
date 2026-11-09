@@ -4,7 +4,6 @@ use axum::extract::{Json, Path, Query};
 use sqlx::PgPool;
 
 use crate::{
-    ResultExtensions,
     entities::{Page, PageRequest, user::User},
     features::user::UpdateUserDto,
 };
@@ -54,16 +53,17 @@ impl UserService for SqlxUserService {
         Ok(sqlx::query_as!(
             User,
             r#"
-                SELECT id,
-                     username,
-                     password_hash,
-                     email,
-                     first_name,
-                     second_name,
-                     bio
-                FROM users
-                WHERE LOWER($1) IN (LOWER(users.email), LOWER(users.username))
+                SELECT
+                    id,
+                    username         AS "username!",
+                    password_hash,
+                    email            AS "email!",
+                    first_name       AS "first_name!",
+                    second_name      AS "second_name!",
+                    bio
+                FROM read_user_by_identity($1, $2)
                 "#,
+            crate::ACTOR_ID,
             identity
         )
         .fetch_one(&self.pool)
@@ -74,14 +74,17 @@ impl UserService for SqlxUserService {
         Ok(sqlx::query_as!(
             User,
             r#"
-                UPDATE users SET
-                first_name = $1,
-                second_name = $2,
-                bio = $3
-                WHERE id = $4
-                RETURNING
-                    id, username, password_hash, email, first_name, second_name, bio
+                SELECT
+                    id,
+                    username         AS "username!",
+                    password_hash,
+                    email            AS "email!",
+                    first_name       AS "first_name!",
+                    second_name      AS "second_name!",
+                    bio
+                FROM modify_user_profile($1, $2, $3, $4, $5)
                 "#,
+            crate::ACTOR_ID,
             dto.first_name,
             dto.second_name,
             dto.bio,
@@ -95,16 +98,17 @@ impl UserService for SqlxUserService {
         Ok(sqlx::query_as!(
             User,
             r#"
-                SELECT id,
-                     username,
-                     password_hash,
-                     email,
-                     first_name,
-                     second_name,
-                     bio
-                FROM users
-                WHERE id = $1
+                SELECT
+                    id,
+                    username         AS "username!",
+                    password_hash,
+                    email            AS "email!",
+                    first_name       AS "first_name!",
+                    second_name      AS "second_name!",
+                    bio
+                FROM read_user($1, $2)
                 "#,
+            crate::ACTOR_ID,
             id
         )
         .fetch_one(&self.pool)
@@ -112,42 +116,45 @@ impl UserService for SqlxUserService {
     }
 
     async fn delete(&self, id: i32) -> crate::Result<()> {
-        Ok(sqlx::query(r#"DELETE FROM users WHERE id=$1"#)
-            .bind(id)
-            .execute(&self.pool)
-            .await?)
-        .report_noop_delete("user")
+        let affected = sqlx::query_scalar!(
+            r#"SELECT delete_user($1, $2) AS "affected!""#,
+            crate::ACTOR_ID,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        if affected == 0 {
+            tracing::warn!("attempt to remove non-existent user");
+        }
+        Ok(())
     }
     async fn fetch_list(&self, page: PageRequest) -> crate::Result<Page<User>> {
-        let x = sqlx::query_as!(
+        let mut items = sqlx::query_as!(
             User,
             r#"
-              SELECT id,
-                     username,
-                     password_hash,
-                     email,
-                     first_name,
-                     second_name,
-                     bio
-              FROM users
-              WHERE id >= $1
-              ORDER BY id
-              LIMIT $2
+              SELECT
+                  id,
+                  username         AS "username!",
+                  password_hash,
+                  email            AS "email!",
+                  first_name       AS "first_name!",
+                  second_name      AS "second_name!",
+                  bio
+              FROM read_users($1)
             "#,
-            page.offset,
-            page.limit
+            crate::ACTOR_ID
         )
         .fetch_all(&self.pool)
         .await?;
 
-        if x.is_empty() {
+        items.retain(|user| user.id.unwrap_or_default() >= page.offset);
+        items.truncate(page.limit.max(0) as usize);
+
+        if items.is_empty() {
             Ok(Page::empty(page.limit))
         } else {
-            let offset = x.last().unwrap().id.unwrap();
-            Ok(Page {
-                items: x,
-                next_request: page.next_from(offset),
-            })
+            let offset = items.last().and_then(|user| user.id).unwrap_or_default();
+            Ok(Page::next(offset, items, page))
         }
     }
 }

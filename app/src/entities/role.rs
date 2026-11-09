@@ -21,15 +21,12 @@ impl Role {
         let records = sqlx::query!(
             r#"
             SELECT
-                roles.name as role_name,
-                permissions.name as permission_name
-            FROM user_roles
-            INNER JOIN role_permissions ON role_permissions.role_id=user_roles.role_id
-            INNER JOIN permissions ON permissions.id=role_permissions.permission_id
-            INNER JOIN roles ON roles.id=role_permissions.role_id
-            WHERE user_id = $1
-            ORDER BY roles.name
+                role_name       AS "role_name!",
+                permission_name AS "permission_name!"
+            FROM read_user_roles($1, $2)
+            ORDER BY role_name
         "#,
+            crate::ACTOR_ID,
             user_id
         )
         .fetch_all(executor)

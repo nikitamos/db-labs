@@ -1,5 +1,5 @@
 use super::{CreateStatusDto, UpdateStatusDto};
-use crate::{ResultExtensions, entities::{Page, PageRequest, status::Status}};
+use crate::entities::{Page, PageRequest, status::Status};
 use aide::axum::routing::{delete, post, get};
 use axum::extract::{Json, Path, Query};
 use sqlx::PgPool;
@@ -49,10 +49,15 @@ impl StatusService for SqlxStatusService {
         Ok(sqlx::query_as!(
             Status,
             r#"
-            SELECT id, name, color, ready, pending
-            FROM statuses
-            WHERE id = $1
+            SELECT
+                id,
+                name     AS "name!",
+                color    AS "color!",
+                ready    AS "ready!",
+                pending  AS "pending!"
+            FROM read_status($1, $2)
             "#,
+            crate::ACTOR_ID,
             id
         )
         .fetch_one(&self.pool)
@@ -60,20 +65,25 @@ impl StatusService for SqlxStatusService {
     }
 
     async fn get_list(&self, pagination: PageRequest) -> crate::Result<Page<Status>> {
-        let items = sqlx::query_as!(
+        let mut items = sqlx::query_as!(
             Status,
             r#"
-            SELECT id, name, color, ready, pending
-            FROM statuses
-            WHERE id > $1
-            ORDER BY id
-            LIMIT $2
+            SELECT
+                id,
+                name     AS "name!",
+                color    AS "color!",
+                ready    AS "ready!",
+                pending  AS "pending!"
+            FROM read_statuses($1)
             "#,
-            pagination.offset,
-            pagination.limit
+            crate::ACTOR_ID
         )
         .fetch_all(&self.pool)
         .await?;
+
+        items.retain(|status| status.id.unwrap_or_default() > pagination.offset);
+        items.truncate(pagination.limit.max(0) as usize);
+
         if items.is_empty() {
             Ok(Page::empty(pagination.limit))
         } else {
@@ -86,10 +96,15 @@ impl StatusService for SqlxStatusService {
         Ok(sqlx::query_as!(
             Status,
             r#"
-            INSERT INTO statuses (name, color, ready, pending)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, name, color, ready, pending
+            SELECT
+                id,
+                name     AS "name!",
+                color    AS "color!",
+                ready    AS "ready!",
+                pending  AS "pending!"
+            FROM write_status($1, $2, $3, $4, $5)
             "#,
+            crate::ACTOR_ID,
             body.name,
             body.color,
             body.ready,
@@ -103,14 +118,15 @@ impl StatusService for SqlxStatusService {
         Ok(sqlx::query_as!(
             Status,
             r#"
-            UPDATE statuses
-            SET name    = COALESCE($1, name),
-                color   = COALESCE($2, color),
-                ready   = COALESCE($3, ready),
-                pending = COALESCE($4, pending)
-            WHERE id = $5
-            RETURNING id, name, color, ready, pending
+            SELECT
+                id,
+                name     AS "name!",
+                color    AS "color!",
+                ready    AS "ready!",
+                pending  AS "pending!"
+            FROM modify_status($1, $2, $3, $4, $5, $6)
             "#,
+            crate::ACTOR_ID,
             body.name,
             body.color,
             body.ready,
@@ -122,9 +138,16 @@ impl StatusService for SqlxStatusService {
     }
 
     async fn delete_status(&self, id: i32) -> crate::Result<()> {
-        Ok(sqlx::query!(r#"DELETE FROM statuses WHERE id = $1"#, id)
-            .execute(&self.pool)
-            .await
-            .report_noop_delete("status")?)
+        let affected = sqlx::query_scalar!(
+            r#"SELECT delete_status($1, $2) AS "affected!""#,
+            crate::ACTOR_ID,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        if affected == 0 {
+            tracing::warn!("attempt to remove non-existent status");
+        }
+        Ok(())
     }
 }

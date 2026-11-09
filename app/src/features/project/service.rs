@@ -1,6 +1,5 @@
 use super::CreateProjectDto;
 use super::UpdateProjectDto;
-use crate::ResultExtensions;
 use crate::entities::Page;
 use crate::entities::PageRequest;
 use crate::entities::ProjectRole;
@@ -82,54 +81,65 @@ impl ProjectService for SqlxProjectService {
     }
 
     async fn project_tasks(&self, id: i32, pagination: PageRequest) -> crate::Result<Page<Task>> {
-        let items = sqlx::query_as!(
+        let mut items = sqlx::query_as!(
             Task,
             r#"
-                SELECT 
-                    id as id,
-                    name as name,
-                    description as description,
-                    deadline as deadline,
-                    status_id as status,
-                    assignee_id as assignee,
-                    estimated_time
-                FROM tasks
-                WHERE (id > $1) AND (project_id = $2)
-                ORDER BY id
-                LIMIT $3
+                SELECT
+                    id,
+                    name            AS "name!",
+                    description,
+                    deadline        AS "deadline!",
+                    status          AS "status!",
+                    assignee,
+                    estimated_time  AS "estimated_time!"
+                FROM read_project_tasks($1, $2)
             "#,
-            pagination.offset,
-            id,
-            pagination.limit
+            crate::ACTOR_ID,
+            id
         )
         .fetch_all(&self.pool)
         .await?;
-        Ok(Page::next(
-            items.first().and_then(|f| f.id).unwrap(),
-            items,
-            pagination,
-        ))
+
+        items.retain(|task| task.id.unwrap_or_default() > pagination.offset);
+        items.truncate(pagination.limit.max(0) as usize);
+
+        if items.is_empty() {
+            Ok(Page::empty(pagination.limit))
+        } else {
+            let last = items.last().and_then(|task| task.id).unwrap_or_default();
+            Ok(Page::next(last, items, pagination))
+        }
     }
 
     async fn get_list(&self, pagination: PageRequest) -> crate::Result<Page<Project>> {
-        let items = sqlx::query_as!(
+        let mut items = sqlx::query_as!(
             Project,
             r#"
             SELECT
-                manager_id AS manager,
-                id, name, description, start_time, deadline,
-                0::int as members, 0::int as tasks
-            FROM projects
-            ORDER BY id
+                manager         AS "manager!",
+                id,
+                name            AS "name!",
+                description,
+                start_time,
+                deadline,
+                members         AS "members!",
+                tasks           AS "tasks!"
+            FROM read_projects($1)
             "#,
+            crate::ACTOR_ID
         )
         .fetch_all(&self.pool)
         .await?;
-        Ok(Page::next(
-            items.first().and_then(|f| f.id).unwrap(),
-            items,
-            pagination,
-        ))
+
+        items.retain(|project| project.id.unwrap_or_default() > pagination.offset);
+        items.truncate(pagination.limit.max(0) as usize);
+
+        if items.is_empty() {
+            Ok(Page::empty(pagination.limit))
+        } else {
+            let last = items.last().and_then(|project| project.id).unwrap_or_default();
+            Ok(Page::next(last, items, pagination))
+        }
     }
 
     async fn create_project(
@@ -146,17 +156,9 @@ impl ProjectService for SqlxProjectService {
         // TODO: trigger that adds manager to members
         let project_id = sqlx::query_scalar!(
             r#"
-                INSERT INTO projects(
-                    manager_id,
-                    name,
-                    description,
-                    start_time,
-                    deadline
-                )
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING
-                    id
+                SELECT write_project($1, $2, $3, $4, $5, $6) AS "id!"
             "#,
+            crate::ACTOR_ID,
             manager_id,
             name,
             description,
@@ -182,18 +184,9 @@ impl ProjectService for SqlxProjectService {
         }: UpdateProjectDto,
     ) -> crate::Result<Project> {
         let mut tx = self.pool.begin().await?;
-        let old_mgr = sqlx::query_scalar!(
-            r#"
-            UPDATE projects
-            SET manager_id  = COALESCE($1, manager_id),
-                name        = COALESCE($2, name),
-                description = COALESCE($3, description),
-                start_time  = COALESCE($4, start_time),
-                deadline    = COALESCE($5, deadline)
-            WHERE id = $6
-            RETURNING
-                OLD.manager_id
-            "#,
+        let _ = sqlx::query_scalar!(
+            "SELECT modify_project($1, $2, $3, $4, $5, $6, $7)",
+            crate::ACTOR_ID,
             manager_id,
             name,
             description,
@@ -208,30 +201,26 @@ impl ProjectService for SqlxProjectService {
         Ok(project)
     }
     async fn add_member(&self, id: i32, member: AddMemberDro) -> crate::Result<()> {
-        sqlx::query!(
-            r#"
-            INSERT INTO project_members (user_id, project_id, project_role)
-            VALUES ($1, $2, $3)
-            "#,
+        let _ = sqlx::query!(
+            "SELECT write_project_member($1, $2, $3, $4)",
+            crate::ACTOR_ID,
             member.member_id,
             id,
             member.role as ProjectRole
         )
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
         Ok(())
     }
 
     async fn remove_member(&self, dto: RemoveMemberDto) -> crate::Result<()> {
-        sqlx::query!(
-            r#"
-            DELETE FROM project_members
-            WHERE project_id = $1 AND user_id = $2
-            "#,
+        let _ = sqlx::query_scalar!(
+            r#"SELECT delete_project_member($1, $2, $3) AS "affected!""#,
+            crate::ACTOR_ID,
             dto.project_id,
             dto.user_id
         )
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
         Ok(())
     }
@@ -239,10 +228,10 @@ impl ProjectService for SqlxProjectService {
     async fn get_role(&self, project_id: i32, user_id: i32) -> crate::Result<Option<ProjectRole>> {
         let role = sqlx::query_scalar!(
             r#"
-            SELECT project_role AS "project_role: ProjectRole"
-            FROM project_members
-            WHERE project_id = $1 AND user_id = $2
+            SELECT project_role AS "project_role!: ProjectRole"
+            FROM read_project_member_role($1, $2, $3)
             "#,
+            crate::ACTOR_ID,
             project_id,
             user_id
         )
@@ -252,10 +241,17 @@ impl ProjectService for SqlxProjectService {
     }
 
     async fn delete_project(&self, id: i32) -> crate::Result<()> {
-        Ok(sqlx::query!("DELETE FROM projects WHERE id = $1", id)
-            .execute(&self.pool)
-            .await
-            .report_noop_delete("project")?)
+        let affected = sqlx::query_scalar!(
+            r#"SELECT delete_project($1, $2) AS "affected!""#,
+            crate::ACTOR_ID,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        if affected == 0 {
+            tracing::warn!("attempt to remove non-existent project");
+        }
+        Ok(())
     }
 }
 
@@ -269,12 +265,17 @@ impl SqlxProjectService {
             Project,
             r#"
             SELECT
-                manager_id AS manager,
-                id, name, description, start_time, deadline,
-                0::int as members, 0::int as tasks
-            FROM projects
-            WHERE id = $1
+                manager         AS "manager!",
+                id,
+                name            AS "name!",
+                description,
+                start_time,
+                deadline,
+                members         AS "members!",
+                tasks           AS "tasks!"
+            FROM read_project($1, $2)
             "#,
+            crate::ACTOR_ID,
             id
         )
         .fetch_one(exec)
@@ -288,12 +289,17 @@ impl SqlxProjectService {
             Project,
             r#"
             SELECT
-                manager_id AS manager,
-                id, name, description, start_time, deadline,
-                0::int as members, 0::int as tasks
-            FROM projects
-            WHERE id = $1
+                manager         AS "manager!",
+                id,
+                name            AS "name!",
+                description,
+                start_time,
+                deadline,
+                members         AS "members!",
+                tasks           AS "tasks!"
+            FROM read_project($1, $2)
             "#,
+            crate::ACTOR_ID,
             id
         )
         .fetch_one(exec)

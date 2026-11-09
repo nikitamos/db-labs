@@ -1,5 +1,5 @@
 use super::{CreateTaskDto, UpdateTaskDto};
-use crate::{ResultExtensions, entities::{Page, PageRequest, task::Task}, features::task::DependencyDto};
+use crate::{entities::{Page, PageRequest, task::Task}, features::task::DependencyDto};
 use aide::axum::routing::{get,delete, post};
 use axum::extract::{Json, Path, Query};
 use chrono::DateTime;
@@ -86,15 +86,15 @@ impl TaskService for SqlxTaskService {
             r#"
             SELECT
                 id,
-                name,
+                name            AS "name!",
                 description,
-                deadline,
-                status_id   AS status,
-                assignee_id AS assignee,
-                estimated_time
-            FROM tasks
-            WHERE id = $1
+                deadline        AS "deadline!",
+                status          AS "status!",
+                assignee,
+                estimated_time  AS "estimated_time!"
+            FROM read_task($1, $2)
             "#,
+            crate::ACTOR_ID,
             id
         )
         .fetch_one(&self.pool)
@@ -102,27 +102,27 @@ impl TaskService for SqlxTaskService {
     }
 
     async fn get_list(&self, pagination: PageRequest) -> crate::Result<Page<Task>> {
-        let items = sqlx::query_as!(
+        let mut items = sqlx::query_as!(
             Task,
             r#"
             SELECT
                 id,
-                name,
+                name            AS "name!",
                 description,
-                deadline,
-                status_id   AS status,
-                assignee_id AS assignee,
-                estimated_time
-            FROM tasks
-            WHERE id > $1
-            ORDER BY id
-            LIMIT $2
+                deadline        AS "deadline!",
+                status          AS "status!",
+                assignee,
+                estimated_time  AS "estimated_time!"
+            FROM read_tasks($1)
             "#,
-            pagination.offset,
-            pagination.limit
+            crate::ACTOR_ID
         )
         .fetch_all(&self.pool)
         .await?;
+
+        items.retain(|task| task.id.unwrap_or_default() > pagination.offset);
+        items.truncate(pagination.limit.max(0) as usize);
+
         if items.is_empty() {
             Ok(Page::empty(pagination.limit))
         } else {
@@ -135,20 +135,17 @@ impl TaskService for SqlxTaskService {
         Ok(sqlx::query_as!(
             Task,
             r#"
-            INSERT INTO tasks (
-                project_id, name, description, deadline,
-                status_id, assignee_id, estimated_time
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING
+            SELECT
                 id,
-                name,
+                name            AS "name!",
                 description,
-                deadline,
-                status_id   AS status,
-                assignee_id AS assignee,
-                estimated_time
+                deadline        AS "deadline!",
+                status          AS "status!",
+                assignee,
+                estimated_time  AS "estimated_time!"
+            FROM write_task($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
+            crate::ACTOR_ID,
             body.project_id,
             body.name,
             body.description,
@@ -165,23 +162,17 @@ impl TaskService for SqlxTaskService {
         Ok(sqlx::query_as!(
             Task,
             r#"
-            UPDATE tasks
-            SET name           = COALESCE($1, name),
-                description    = COALESCE($2, description),
-                deadline       = COALESCE($3, deadline),
-                status_id      = COALESCE($4, status_id),
-                assignee_id    = COALESCE($5, assignee_id),
-                estimated_time = COALESCE($6, estimated_time)
-            WHERE id = $7
-            RETURNING
+            SELECT
                 id,
-                name,
+                name            AS "name!",
                 description,
-                deadline,
-                status_id   AS status,
-                assignee_id AS assignee,
-                estimated_time
+                deadline        AS "deadline!",
+                status          AS "status!",
+                assignee,
+                estimated_time  AS "estimated_time!"
+            FROM modify_task($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
+            crate::ACTOR_ID,
             body.name,
             body.description,
             body.deadline.as_ref().map(DateTime::naive_utc),
@@ -195,37 +186,39 @@ impl TaskService for SqlxTaskService {
     }
 
     async fn delete_task(&self, id: i32) -> crate::Result<()> {
-        Ok(sqlx::query!(r#"DELETE FROM tasks WHERE id = $1"#, id)
-            .execute(&self.pool)
-            .await
-            .report_noop_delete("task")?)
+        let affected = sqlx::query_scalar!(
+            r#"SELECT delete_task($1, $2) AS "affected!""#,
+            crate::ACTOR_ID,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        if affected == 0 {
+            tracing::warn!("attempt to remove non-existent task");
+        }
+        Ok(())
     }
 
     async fn add_dependency(&self, DependencyDto { dependent, dependency }: DependencyDto) -> crate::Result<()> {
-        sqlx::query!(
-            r#"
-            INSERT INTO tasks_dependencies (dependent_id, dependency_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-            "#,
+        let _ = sqlx::query_scalar!(
+            r#"SELECT write_task_dependency($1, $2, $3) AS "affected!""#,
+            crate::ACTOR_ID,
             dependent,
             dependency
         )
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
         Ok(())
     }
 
     async fn remove_dependency(&self, DependencyDto { dependent, dependency }: DependencyDto) -> crate::Result<()> {
-        sqlx::query!(
-            r#"
-            DELETE FROM tasks_dependencies
-            WHERE dependent_id = $1 AND dependency_id = $2
-            "#,
+        let _ = sqlx::query_scalar!(
+            r#"SELECT delete_task_dependency($1, $2, $3) AS "affected!""#,
+            crate::ACTOR_ID,
             dependent,
             dependency
         )
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
         Ok(())
     }
@@ -236,16 +229,13 @@ impl TaskService for SqlxTaskService {
         }
         let mut tx = self.pool.begin().await?;
         for category_id in categories {
-            sqlx::query!(
-                r#"
-                INSERT INTO task_categories (task_id, category_id)
-                VALUES ($1, $2)
-                ON CONFLICT DO NOTHING
-                "#,
+            let _ = sqlx::query_scalar!(
+                r#"SELECT write_task_category($1, $2, $3) AS "affected!""#,
+                crate::ACTOR_ID,
                 task_id,
                 category_id
             )
-            .execute(&mut *tx)
+            .fetch_one(&mut *tx)
             .await?;
         }
         tx.commit().await?;
@@ -260,15 +250,13 @@ impl TaskService for SqlxTaskService {
         if categories.is_empty() {
             return Ok(());
         }
-        sqlx::query!(
-            r#"
-            DELETE FROM task_categories
-            WHERE task_id = $1 AND category_id = ANY($2)
-            "#,
+        let _ = sqlx::query_scalar!(
+            r#"SELECT delete_task_categories($1, $2, $3) AS "affected!""#,
+            crate::ACTOR_ID,
             task_id,
             &categories
         )
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
         Ok(())
     }
@@ -278,29 +266,28 @@ impl TaskService for SqlxTaskService {
         category: i32,
         page: PageRequest,
     ) -> crate::Result<Page<Task>> {
-        let items = sqlx::query_as!(
+        let mut items = sqlx::query_as!(
             Task,
             r#"
             SELECT
-                t.id,
-                t.name,
-                t.description,
-                t.deadline,
-                t.status_id   AS status,
-                t.assignee_id AS assignee,
-                t.estimated_time
-            FROM tasks t
-            INNER JOIN task_categories tc ON tc.task_id = t.id
-            WHERE t.id > $1 AND tc.category_id = $2
-            ORDER BY t.id
-            LIMIT $3
+                id,
+                name            AS "name!",
+                description,
+                deadline        AS "deadline!",
+                status          AS "status!",
+                assignee,
+                estimated_time  AS "estimated_time!"
+            FROM read_tasks_by_category($1, $2)
             "#,
-            page.offset,
-            category,
-            page.limit
+            crate::ACTOR_ID,
+            category
         )
         .fetch_all(&self.pool)
         .await?;
+
+        items.retain(|task| task.id.unwrap_or_default() > page.offset);
+        items.truncate(page.limit.max(0) as usize);
+
         if items.is_empty() {
             Ok(Page::empty(page.limit))
         } else {

@@ -1,5 +1,5 @@
 use super::{CreateCategoryDto, UpdateCategoryDto};
-use crate::{ResultExtensions, entities::{Page, PageRequest, category::Category}};
+use crate::entities::{Page, PageRequest, category::Category};
 use axum::extract::{Json, Path, Query};
 use sqlx::PgPool;
 use aide::axum::routing::{get,post, delete};
@@ -52,10 +52,14 @@ impl CategoryService for SqlxCategoryService {
         Ok(sqlx::query_as!(
             Category,
             r#"
-            SELECT id, name, badge_color, urgency
-            FROM categories
-            WHERE id = $1
+            SELECT
+                id,
+                name         AS "name!",
+                badge_color  AS "badge_color!",
+                urgency      AS "urgency!"
+            FROM read_category($1, $2)
             "#,
+            crate::ACTOR_ID,
             id
         )
         .fetch_one(&self.pool)
@@ -63,22 +67,26 @@ impl CategoryService for SqlxCategoryService {
     }
 
     async fn get_list(&self, pagination: PageRequest) -> crate::Result<Page<Category>> {
-        let items = sqlx::query_as!(
+        let mut items = sqlx::query_as!(
             Category,
             r#"
-            SELECT id, name, badge_color, urgency
-            FROM categories
-            WHERE id > $1
-            ORDER BY id
-            LIMIT $2
+            SELECT
+                id,
+                name         AS "name!",
+                badge_color  AS "badge_color!",
+                urgency      AS "urgency!"
+            FROM read_categories($1)
             "#,
-            pagination.offset,
-            pagination.limit
+            crate::ACTOR_ID
         )
         .fetch_all(&self.pool)
         .await?;
+
+        items.retain(|category| category.id.unwrap_or_default() > pagination.offset);
+        items.truncate(pagination.limit.max(0) as usize);
+
         if items.is_empty() {
-            Ok(Page::empty(pagination.limit)) // TODO: fix pagination
+            Ok(Page::empty(pagination.limit))
         } else {
             let last = items.last().and_then(|x| x.id).unwrap_or_default();
             Ok(Page::next(last, items, pagination))
@@ -90,10 +98,14 @@ impl CategoryService for SqlxCategoryService {
         Ok(sqlx::query_as!(
             Category,
             r#"
-            INSERT INTO categories (name, badge_color, urgency)
-            VALUES ($1, $2, $3)
-            RETURNING id, name, badge_color, urgency
+            SELECT
+                id,
+                name         AS "name!",
+                badge_color  AS "badge_color!",
+                urgency      AS "urgency!"
+            FROM write_category($1, $2, $3, $4)
             "#,
+            crate::ACTOR_ID,
             body.name,
             body.badge_color,
             body.urgency
@@ -110,13 +122,14 @@ impl CategoryService for SqlxCategoryService {
         Ok(sqlx::query_as!(
             Category,
             r#"
-            UPDATE categories
-            SET name        = COALESCE($1, name),
-                badge_color = COALESCE($2, badge_color),
-                urgency     = COALESCE($3, urgency)
-            WHERE id = $4
-            RETURNING id, name, badge_color, urgency
+            SELECT
+                id,
+                name         AS "name!",
+                badge_color  AS "badge_color!",
+                urgency      AS "urgency!"
+            FROM modify_category($1, $2, $3, $4, $5)
             "#,
+            crate::ACTOR_ID,
             body.name,
             body.badge_color,
             body.urgency,
@@ -127,9 +140,16 @@ impl CategoryService for SqlxCategoryService {
     }
 
     async fn delete_category(&self, id: i32) -> crate::Result<()> {
-        sqlx::query!(r#"DELETE FROM categories WHERE id = $1"#, id)
-            .execute(&self.pool)
-            .await.report_noop_delete("category")?;
+        let affected = sqlx::query_scalar!(
+            r#"SELECT delete_category($1, $2) AS "affected!""#,
+            crate::ACTOR_ID,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        if affected == 0 {
+            tracing::warn!("attempt to remove non-existent category");
+        }
         Ok(())
     }
 }

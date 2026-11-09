@@ -4,7 +4,6 @@ use axum::extract::{Json, Path};
 use sqlx::PgPool;
 
 use crate::{
-    ResultExtensions,
     entities::{session::Session, user::User},
     features::{
         auth::{ChangePasswordDto, SessionDto, SigninDto, SignupDto},
@@ -62,17 +61,17 @@ impl AuthService for SqlxAuthService {
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (
-                username,
+            SELECT
+                id,
+                username         AS "username!",
                 password_hash,
-                email,
-                first_name,
-                second_name,
+                email            AS "email!",
+                first_name       AS "first_name!",
+                second_name      AS "second_name!",
                 bio
-                )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, username, password_hash, email, first_name, second_name, bio
+            FROM write_user($1, $2, $3, $4, $5, $6, $7)
             "#,
+            crate::ACTOR_ID,
             dto.username,
             password_hash,
             dto.email,
@@ -82,7 +81,14 @@ impl AuthService for SqlxAuthService {
         )
         .fetch_one(&mut *tx)
         .await?;
-        sqlx::query!("CALL add_user_role($1, $2);", user.id, "admin").execute(&mut *tx).await?;
+        sqlx::query!(
+            "SELECT write_user_role($1, $2, $3)",
+            crate::ACTOR_ID,
+            user.id,
+            "admin"
+        )
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
 
         Ok(with!(user: password_hash = None))
@@ -97,10 +103,13 @@ impl AuthService for SqlxAuthService {
         let session = sqlx::query_as!(
             Session,
             r#"
-            INSERT INTO sessions (user_id, auth_token)
-            VALUES ($1, $2)
-            RETURNING user_id as user, auth_token, id
+            SELECT
+                "user"       AS "user!",
+                auth_token   AS "auth_token!",
+                id           AS "id!"
+            FROM write_session($1, $2, $3)
             "#,
+            crate::ACTOR_ID,
             user.id,
             "xxxx-not-implemented"
         )
@@ -112,10 +121,16 @@ impl AuthService for SqlxAuthService {
     }
 
     async fn logout(&self, session_id: i32) -> crate::Result<()> {
-        sqlx::query!("DELETE FROM sessions WHERE id=$1", session_id)
-            .execute(&self.pool)
-            .await
-            .report_noop_delete("session")?;
+        let affected = sqlx::query_scalar!(
+            r#"SELECT modify_session($1, $2) AS "affected!""#,
+            crate::ACTOR_ID,
+            session_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        if affected == 0 {
+            tracing::warn!("attempt to remove non-existent session");
+        }
         Ok(())
     }
 
@@ -123,18 +138,17 @@ impl AuthService for SqlxAuthService {
         let user = self.user_service.get_by_id(id).await?;
         user.check_password(dto.old_password)?;
         let hash = bcrypt::hash(dto.new_password, 12)?;
-        sqlx::query_as!(
-            Session,
-            r#"
-            UPDATE users
-            SET password_hash = $1
-            WHERE id = $2
-            "#,
+        let affected = sqlx::query_scalar!(
+            r#"SELECT modify_user_password($1, $2, $3) AS "affected!""#,
+            crate::ACTOR_ID,
             hash,
             user.id
         )
         .fetch_one(&self.pool)
         .await?;
+        if affected == 0 {
+            tracing::warn!("attempt to update password for non-existent user");
+        }
         Ok(())
     }
 }
