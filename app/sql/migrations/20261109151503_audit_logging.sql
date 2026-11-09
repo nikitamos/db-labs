@@ -47,7 +47,7 @@ p_description JSONB;
 BEGIN
 IF TG_OP = 'DELETE' THEN
     p_entity_id = OLD.id;
-    p_description = row_to_object('user_id', OLD.user_id);
+    p_description = jsonb_build_object('user_id', OLD.user_id);
 ELSE
     p_entity_id = NEW.id;
     p_description = jsonb_build_object('user_id', NEW.user_id);
@@ -72,6 +72,34 @@ RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE FUNCTION audit_m2m_logger() RETURNS trigger AS $$
+DECLARE
+p_description JSONB;
+BEGIN
+IF TG_OP = 'DELETE' THEN
+    p_description = to_jsonb(OLD);
+ELSE
+    p_description = to_jsonb(NEW);
+END IF;
+
+INSERT INTO audit_log (
+    event_timestamp,
+    user_id,
+    table_name,
+    entity_id,
+    action,
+    description
+) VALUES (
+    NOW(),
+    0,
+    TG_TABLE_NAME,
+    0,
+    op_to_act(TG_OP),
+    p_description
+);
+RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_audit_logger_session
 AFTER INSERT OR UPDATE OR DELETE ON sessions
 FOR EACH ROW EXECUTE FUNCTION audit_session_logger();
@@ -107,3 +135,23 @@ FOR EACH ROW EXECUTE FUNCTION audit_logger();
 CREATE TRIGGER trg_audit_logger_discussions
 AFTER INSERT OR UPDATE OR DELETE ON discussion_posts
 FOR EACH ROW EXECUTE FUNCTION audit_logger();
+
+CREATE TRIGGER trg_audit_logger_role_permissions
+AFTER INSERT OR UPDATE OR DELETE ON role_permissions
+FOR EACH ROW EXECUTE FUNCTION audit_m2m_logger();
+
+CREATE TRIGGER trg_audit_logger_user_roles
+AFTER INSERT OR UPDATE OR DELETE ON user_roles
+FOR EACH ROW EXECUTE FUNCTION audit_m2m_logger();
+
+CREATE TRIGGER trg_audit_logger_project_members
+AFTER INSERT OR UPDATE OR DELETE ON project_members
+FOR EACH ROW EXECUTE FUNCTION audit_m2m_logger();
+
+CREATE TRIGGER trg_audit_logger_tasks_dependencies
+AFTER INSERT OR UPDATE OR DELETE ON tasks_dependencies
+FOR EACH ROW EXECUTE FUNCTION audit_m2m_logger();
+
+CREATE TRIGGER trg_audit_logger_task_categories
+AFTER INSERT OR UPDATE OR DELETE ON task_categories
+FOR EACH ROW EXECUTE FUNCTION audit_m2m_logger();
