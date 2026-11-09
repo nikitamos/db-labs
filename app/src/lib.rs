@@ -73,8 +73,9 @@ impl AppState {
                 })
             })
             .connect_with(
-                PgConnectOptions::from_str(&cfg.app_db_uri).unwrap()
-                    .statement_cache_capacity(0)
+                PgConnectOptions::from_str(&cfg.app_db_uri)
+                    .unwrap()
+                    .statement_cache_capacity(0),
             )
             .await
             .unwrap();
@@ -128,6 +129,24 @@ impl AppState {
         self.migrate_db().await?;
         *self.health.lock() = HealthStatus::Healthy;
         Ok(())
+    }
+    pub async fn truncate_db(&self) -> sqlx::Result<()> {
+        sqlx::raw_sql(r#"
+            DO $$ 
+            DECLARE 
+                r RECORD;
+            BEGIN
+                FOR r IN (
+                    SELECT tablename 
+                    FROM pg_tables 
+                    WHERE schemaname = 'public' 
+                    AND tablename != '_sqlx_migrations'
+                ) LOOP
+                    EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' RESTART IDENTITY CASCADE;';
+                END LOOP;
+            END $$;
+            "#
+        ).execute(&self.db).await.map(|_| ())
     }
 }
 

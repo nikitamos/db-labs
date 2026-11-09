@@ -214,6 +214,10 @@ pub async fn drop_db(State(app): State<AppState>) -> Result<(), HttpError> {
     app.drop_db_content().await.map_err(crate::Error::from)?;
     Ok(())
 }
+async fn truncate_db(State(app): State<AppState>) -> Result<(), crate::HttpError> {
+    app.truncate_db().await.map_err(crate::Error::from)?;
+    Ok(())
+}
 
 pub fn routes() -> ApiRouter<AppState> {
     ApiRouter::new()
@@ -221,6 +225,7 @@ pub fn routes() -> ApiRouter<AppState> {
         .api_route("/db_reset", post(reset_db))
         .api_route("/db_drop", post(drop_db))
         .api_route("/db_populate", post(populate_db))
+        .api_route("/db_truncate", post(truncate_db))
 }
 
 // pub fn routes()

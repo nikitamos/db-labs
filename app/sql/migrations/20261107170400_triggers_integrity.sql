@@ -278,7 +278,7 @@ FROM tasks t INTO all_ready
 JOIN statuses s ON s.id = t.status_id
 WHERE t.id IN
         (SELECT dependency_id
-         FROM task_dependencies
+         FROM tasks_dependencies
          WHERE dependent_id = of_task_id);
 
 RETURN all_ready;
