@@ -1,6 +1,7 @@
 CREATE OR REPLACE VIEW user_permissions AS
 SELECT roles.name as role_name,
-       permissions.name as permission_name
+permissions.name as permission_name,
+user_roles.user_id as user_id
 FROM user_roles
 INNER JOIN role_permissions ON role_permissions.role_id=user_roles.role_id
 INNER JOIN permissions ON permissions.id=role_permissions.permission_id
@@ -9,12 +10,34 @@ ORDER BY roles.name;
 
 -- COMMON FUNCTIONS --
 
-CREATE OR REPLACE FUNCTION check_permission(user_id int, permission_name VARCHAR) RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION check_permission(for_user_id int, req_permission_name VARCHAR) RETURNS BOOLEAN AS $$
 BEGIN
 
 PERFORM 1 FROM user_permissions p
-WHERE user_id = p.user_id AND p.permission_name = permission_name;
+WHERE for_user_id = p.user_id
+    AND p.permission_name = req_permission_name;
 RETURN FOUND;
+
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE PROCEDURE add_user_role(for_user_id int, role_name VARCHAR) AS $$
+DECLARE
+new_role_id int;
+BEGIN
+
+SELECT id FROM roles
+INTO new_role_id
+WHERE name = role_name;
+
+
+IF NOT FOUND THEN
+    RAISE EXCEPTION 'no such role';
+END IF;
+
+INSERT INTO user_roles (user_id, role_id)
+VALUES(for_user_id, new_role_id);
 
 END;
 $$ LANGUAGE plpgsql;
@@ -29,17 +52,17 @@ BEGIN
 
     -- TODO: authorize
 
-    IF NOT check_permission(NEW.manager_id, "manage_projects") THEN
+IF NOT check_permission(NEW.manager_id, 'manage_projects') THEN
         RAISE EXCEPTION 'insufficient manager permission';
         RETURN OLD; -- is it required?
     END IF;
 
 
     DELETE FROM project_members pm
-    WHERE pm.project_id = NEW.project_id AND pm.user_id = NEW.manager_id;
+    WHERE pm.project_id = NEW.id AND pm.user_id = NEW.manager_id;
 
     INSERT INTO project_members (project_id, user_id, project_role)
-    VALUES (NEW.project_id, NEW.manager_id, 'manager');
+    VALUES (NEW.id, NEW.manager_id, 'manager');
 
     RETURN NEW;
 END;
@@ -247,7 +270,7 @@ FOR EACH ROW EXECUTE FUNCTION validate_task_dependencies_no_cycles();
 
 -- todo: constraint to forbid pending and ready
 
-CREATE OR REPLACE FUNCTION all_dependencies_ready(task_id int) RETURNS BOOLEAN AS $$ DECLARE all_ready bool DEFAULT true;
+CREATE OR REPLACE FUNCTION all_dependencies_ready(of_task_id int) RETURNS BOOLEAN AS $$ DECLARE all_ready bool DEFAULT true;
 BEGIN
 
 SELECT bool_and(s.ready)
@@ -256,7 +279,7 @@ JOIN statuses s ON s.id = t.status_id
 WHERE t.id IN
         (SELECT dependency_id
          FROM task_dependencies
-         WHERE dependent_id = task_id);
+         WHERE dependent_id = of_task_id);
 
 RETURN all_ready;
 END;

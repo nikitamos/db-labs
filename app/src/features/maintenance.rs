@@ -2,10 +2,10 @@ use aide::axum::{
     ApiRouter,
     routing::{get, post},
 };
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde_json::json;
 
 use crate::{AppState, HttpError};
@@ -210,11 +210,16 @@ pub async fn reset_db(State(app): State<AppState>) -> Result<(), HttpError> {
     app.reset_db().await.map_err(crate::Error::from)?;
     Ok(())
 }
+pub async fn drop_db(State(app): State<AppState>) -> Result<(), HttpError> {
+    app.drop_db_content().await.map_err(crate::Error::from)?;
+    Ok(())
+}
 
 pub fn routes() -> ApiRouter<AppState> {
     ApiRouter::new()
         .api_route("/health", get(health_check))
         .api_route("/db_reset", post(reset_db))
+        .api_route("/db_drop", post(drop_db))
         .api_route("/db_populate", post(populate_db))
 }
 

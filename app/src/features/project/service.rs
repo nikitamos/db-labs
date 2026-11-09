@@ -165,16 +165,6 @@ impl ProjectService for SqlxProjectService {
         )
         .fetch_one(&mut *tx)
         .await?;
-        sqlx::query!(
-            r#"
-                INSERT INTO project_members(user_id, project_id, project_role)
-                VALUES ($1, $2, 'manager')
-            "#,
-            manager_id,
-            project_id
-        )
-        .execute(&mut *tx)
-        .await?;
         let project = Self::fetch_full(&mut *tx, project_id).await?;
         tx.commit().await?;
         Ok(project)
@@ -213,25 +203,6 @@ impl ProjectService for SqlxProjectService {
         )
         .fetch_one(&mut *tx)
         .await?;
-
-        if let Some(new_mgr) = manager_id {
-            sqlx::query!(
-                r#"DELETE FROM project_members
-                   WHERE user_id=$1 AND project_id=$2"#,
-                old_mgr,
-                id
-            )
-            .execute(&mut *tx)
-            .await?;
-            sqlx::query!(
-                r#"INSERT INTO project_members(user_id, project_id)
-                   VALUES ($1, $2)"#,
-                new_mgr,
-                id
-            )
-            .execute(&mut *tx)
-            .await?;
-        }
         let project = Self::fetch_no_nav(&mut *tx, id).await?;
         tx.commit().await?;
         Ok(project)

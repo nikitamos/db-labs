@@ -1,12 +1,14 @@
 use parking_lot::Mutex;
-use std::{fmt::Display, sync::Arc};
+#[cfg(debug_assertions)]
+use std::path::Path;
+use std::{fmt::Display, str::FromStr, sync::Arc};
 
 use axum::{Json, extract::FromRef, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 use sqlx::{
     Pool, Postgres,
     migrate::{MigrateError, Migrator},
-    postgres::{PgPoolOptions, PgQueryResult},
+    postgres::{PgConnectOptions, PgPoolOptions, PgQueryResult},
 };
 use tracing::{error, warn};
 
@@ -60,16 +62,20 @@ pub enum Error {
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-static MIGRATOR: Migrator = sqlx::migrate!("./sql/migrations");
 impl AppState {
     pub async fn from_config(cfg: AppConfig) -> Self {
         let pool = PgPoolOptions::new()
             .max_connections(24)
-            .before_acquire(|_, m| Box::pin(async move {
-                tracing::debug!(age_ms=m.age.as_millis(), "acquire connection");
-                Ok(true)
-            }))
-            .connect(&cfg.app_db_uri)
+            .before_acquire(|_, m| {
+                Box::pin(async move {
+                    tracing::debug!(age_ms = m.age.as_millis(), "acquire connection");
+                    Ok(true)
+                })
+            })
+            .connect_with(
+                PgConnectOptions::from_str(&cfg.app_db_uri).unwrap()
+                    .statement_cache_capacity(0)
+            )
             .await
             .unwrap();
         let user = SqlxUserService::new(pool.clone());
@@ -88,7 +94,12 @@ impl AppState {
 
     pub async fn migrate_db(&self) -> Result<(), MigrateError> {
         tracing::info!("Applying migrations");
-        MIGRATOR
+        #[cfg(not(debug_assertions))]
+        let mut migrator = sqlx::migrate!("./sql/migrations");
+        #[cfg(debug_assertions)]
+        let mut migrator = Migrator::new(Path::new("./sql/migrations")).await?;
+        migrator
+            .set_locking(false)
             .run(&self.db)
             .await
             .map_err(|e| {
@@ -224,7 +235,6 @@ impl<const CODE: u16, R: IntoResponse> From<R> for WithCode<CODE, R> {
     }
 }
 
-
 pub trait ResultExtensions<E> {
     fn report_noop_delete(self, context: impl Display) -> Result<(), E>;
 }
@@ -238,7 +248,6 @@ impl<E> ResultExtensions<E> for Result<PgQueryResult, E> {
         })
     }
 }
-
 
 #[macro_export]
 macro_rules! with {

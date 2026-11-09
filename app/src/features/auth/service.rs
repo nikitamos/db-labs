@@ -1,4 +1,4 @@
-use aide::axum::routing::{post, get};
+use aide::axum::routing::{get, post};
 use autoendpoint::endpoints;
 use axum::extract::{Json, Path};
 use sqlx::PgPool;
@@ -38,19 +38,28 @@ pub trait AuthService: Clone + Send + Sync + 'static {
 pub struct SqlxAuthService {
     pool: PgPool,
     user_service: SqlxUserService,
+    cost: u32,
 }
 
 impl SqlxAuthService {
     pub fn new(pool: PgPool, user_service: SqlxUserService) -> Self {
-        Self { pool, user_service }
+        Self {
+            pool,
+            user_service,
+            #[cfg(debug_assertions)]
+            cost: 4,
+            #[cfg(not(debug_assertions))]
+            cost: 12,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl AuthService for SqlxAuthService {
     async fn signup(&self, dto: SignupDto) -> crate::Result<User> {
-        let password_hash = bcrypt::hash(&dto.password, 12)?;
-        Ok(sqlx::query_as!(
+        let password_hash = bcrypt::hash(&dto.password, self.cost)?;
+        let mut tx = self.pool.begin().await?;
+        let user = sqlx::query_as!(
             User,
             r#"
             INSERT INTO users (
@@ -71,9 +80,12 @@ impl AuthService for SqlxAuthService {
             dto.second_name,
             dto.bio
         )
-        .fetch_one(&self.pool)
-        .await
-        .map(|u| with!(u: password_hash = None))?)
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query!("CALL add_user_role($1, $2);", user.id, "admin").execute(&mut *tx).await?;
+        tx.commit().await?;
+
+        Ok(with!(user: password_hash = None))
     }
 
     async fn login(&self, dto: SigninDto) -> crate::Result<SessionDto> {
