@@ -90,7 +90,7 @@ impl ProjectService for SqlxProjectService {
                     description,
                     deadline        AS "deadline!",
                     status          AS "status!",
-                    assignee,
+                    assignee AS "assignee?",
                     estimated_time  AS "estimated_time!"
                 FROM read_project_tasks($1, $2)
             "#,

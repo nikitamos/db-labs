@@ -62,11 +62,11 @@ impl DiscussionService for SqlxDiscussionService {
             r#"
             SELECT
                 id,
-                task    AS task,
-                author  AS author,
+                task    AS "task?",
+                author  AS "author?",
                 title   AS "title!",
                 body    AS "body!",
-                parent  AS parent
+                parent  AS "parent?"
             FROM read_discussion_post($1, $2)
             "#,
             crate::ACTOR_ID,
@@ -82,11 +82,11 @@ impl DiscussionService for SqlxDiscussionService {
             r#"
             SELECT
                 id,
-                task    AS task,
-                author  AS author,
+                task    AS "task?",
+                author  AS "author?",
                 title   AS "title!",
                 body    AS "body!",
-                parent  AS parent
+                parent  AS "parent?"
             FROM write_discussion_post($1, $2, $3, $4, $5, $6)
             "#,
             crate::ACTOR_ID,
@@ -110,11 +110,11 @@ impl DiscussionService for SqlxDiscussionService {
             r#"
             SELECT
                 id,
-                task    AS task,
-                author  AS author,
+                task    AS "task?",
+                author  AS "author?",
                 title   AS "title!",
                 body    AS "body!",
-                parent  AS parent
+                parent  AS "parent?"
             FROM modify_discussion_post($1, $2, $3, $4)
             "#,
             crate::ACTOR_ID,
@@ -150,11 +150,11 @@ impl DiscussionService for SqlxDiscussionService {
             r#"
             SELECT
                 id,
-                task    AS task,
-                author  AS author,
+                task    AS "task?",
+                author  AS "author?",
                 title   AS "title!",
                 body    AS "body!",
-                parent  AS parent
+                parent  AS "parent?"
             FROM read_discussion_posts_by_task($1, $2)
             "#,
             crate::ACTOR_ID,
@@ -184,11 +184,11 @@ impl DiscussionService for SqlxDiscussionService {
             r#"
             SELECT
                 id,
-                task    AS task,
-                author  AS author,
+                task    AS "task?",
+                author  AS "author?",
                 title   AS "title!",
                 body    AS "body!",
-                parent  AS parent
+                parent  AS "parent?"
             FROM read_discussion_posts_by_parent($1, $2)
             "#,
             crate::ACTOR_ID,

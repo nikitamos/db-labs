@@ -90,7 +90,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee,
+                assignee AS "assignee?",
                 estimated_time  AS "estimated_time!"
             FROM read_task($1, $2)
             "#,
@@ -111,7 +111,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee,
+                assignee AS "assignee?",
                 estimated_time  AS "estimated_time!"
             FROM read_tasks($1)
             "#,
@@ -141,7 +141,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee,
+                assignee AS "assignee?",
                 estimated_time  AS "estimated_time!"
             FROM write_task($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
@@ -168,7 +168,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee,
+                assignee AS "assignee?",
                 estimated_time  AS "estimated_time!"
             FROM modify_task($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
@@ -275,7 +275,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee,
+                assignee AS "assignee?",
                 estimated_time  AS "estimated_time!"
             FROM read_tasks_by_category($1, $2)
             "#,

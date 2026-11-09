@@ -48,11 +48,11 @@ CREATE TABLE user_roles (
 CREATE TABLE audit_log (
     id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     event_timestamp timestamp NOT NULL,
-    user_id integer REFERENCES users (id),
+    user_id integer,
     table_name varchar(48) NOT NULL,
     entity_id integer NOT NULL,
     action AuditAction NOT NULL,
-    description varchar(1024) NOT NULL
+    description jsonb NOT NULL
 );
 
 CREATE TABLE sessions (
