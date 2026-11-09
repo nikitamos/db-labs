@@ -1,3 +1,4 @@
+use opentelemetry_sdk::metrics::data;
 use parking_lot::Mutex;
 #[cfg(debug_assertions)]
 use std::path::Path;
@@ -211,13 +212,16 @@ impl HttpError {
     pub fn from_sqlx_error(e: sqlx::Error) -> Self {
         tracing::error!(db_error = %e, "db error occurred while processing");
         match e {
-            sqlx::Error::Database(database_error) => Self::new(
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "data consistency error in `{}`",
-                    database_error.table().unwrap_or("unknown")
-                ),
-            ),
+            sqlx::Error::Database(database_error) => {
+                Self::new(
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "data consistency error in `{}`: {}",
+                        database_error.table().unwrap_or("unknown"),
+                        database_error.message()
+                    ),
+                )
+            },
             sqlx::Error::RowNotFound => Self::new(
                 StatusCode::NOT_FOUND,
                 "at least one of entities implied by the request doesn't exist",

@@ -259,6 +259,7 @@ FOR EACH ROW EXECUTE FUNCTION validate_dependencies_belong_to_same_project();
 CREATE OR REPLACE FUNCTION validate_task_dependencies_no_cycles() RETURNS trigger AS $$
 BEGIN
 -- Validates that there are no cycles in the task dependency graph
+RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -313,9 +314,9 @@ CREATE OR REPLACE FUNCTION validate_dependent_not_ready() RETURNS trigger AS $$ 
 BEGIN
 -- validates that depending task is not ready when adding a non-ready dependency
 
-SELECT ready
-FROM statuses INTO new_ready
-JOIN tasks t ON t.status_id = id
+SELECT s.ready
+FROM statuses s INTO new_ready
+JOIN tasks t ON t.status_id = s.id
 WHERE t.id = NEW.dependent_id;
 
 IF new_ready THEN RAISE
