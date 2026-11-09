@@ -29,7 +29,6 @@ ORDER BY reachable.depth, reachable.task_id;
 $$;
 
 
--- All tasks that transitively depend on root_task_id.
 CREATE OR REPLACE FUNCTION task_dependents(root_task_id integer)
 RETURNS TABLE (
     task_id integer,
