@@ -85,7 +85,7 @@ where
         let token = &token[7..];
 
         let user_id = verify_token(token, &jwt_state)?;
-        Ok(UserId { user_id })
+        Ok(UserId(user_id))
     }
 }
 

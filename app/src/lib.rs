@@ -15,7 +15,7 @@ use serde::Serialize;
 use sqlx::{
     Pool, Postgres,
     migrate::{MigrateError, Migrator},
-    postgres::{PgConnectOptions, PgPoolOptions, PgQueryResult},
+    postgres::{PgConnectOptions, PgDatabaseError, PgPoolOptions, PgQueryResult},
 };
 use tracing::{error, warn};
 

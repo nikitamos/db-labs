@@ -1,14 +1,15 @@
 use super::CreateProjectDto;
 use super::UpdateProjectDto;
-use crate::entities::Page;
-use crate::entities::PageRequest;
-use crate::entities::ProjectRole;
-use crate::entities::project::Project;
-use crate::entities::task::Task;
-use crate::extract::WithRejection;
+use crate::features::auth::UserId;
 use crate::features::project::AddMemberDro;
 use crate::features::project::RemoveMemberDto;
-use aide::axum::routing::{get_with as get,delete_with as delete,post_with as post};
+use crate::{
+    entities::{
+        Page, PageRequest, ProjectRole, Relation, project::Project, task::Task, user::User,
+    },
+    extract::WithRejection,
+};
+use aide::axum::routing::{delete_with as delete, get_with as get, post_with as post};
 use axum::extract::{Json, Path, Query};
 use chrono::DateTime;
 use sqlx::PgExecutor;
@@ -20,11 +21,16 @@ type Unit = ();
 #[async_trait::async_trait]
 pub trait ProjectService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Json::<Project>,path="/{id}")]
-    async fn get_by_id(&self, #[extract(Path)] id: i32) -> crate::Result<Project>;
+    async fn get_by_id(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(Path)] id: i32,
+    ) -> crate::Result<Project>;
 
     #[endpoint(ok=Json::<Page::<Task>>,path="/{id}/tasks")]
     async fn project_tasks(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] id: i32,
         #[extract(Query)] pagination: PageRequest,
     ) -> crate::Result<Page<Task>>;
@@ -32,18 +38,21 @@ pub trait ProjectService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Json::<Page::<Project>>,path="/")]
     async fn get_list(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Query)] pagination: PageRequest,
     ) -> crate::Result<Page<Project>>;
 
     #[endpoint(ok=Json::<Project>,path="/",method=post)]
     async fn create_project(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(WithRejection<Json>)] body: CreateProjectDto,
     ) -> crate::Result<Project>;
 
     #[endpoint(ok=Json::<Project>,path="/{id}",method=post)]
     async fn update_project(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] id: i32,
         #[extract(WithRejection<Json>)] body: UpdateProjectDto,
     ) -> crate::Result<Project>;
@@ -51,17 +60,31 @@ pub trait ProjectService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Unit,path="/{id}/member",method=post)]
     async fn add_member(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] id: i32,
         #[extract(WithRejection<Json>)] member: AddMemberDro,
     ) -> crate::Result<()>;
 
     #[endpoint(ok=Unit,path="/{id}",method=delete)]
-    async fn delete_project(&self, #[extract(Path)] id: i32) -> crate::Result<()>;
+    async fn delete_project(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(Path)] id: i32,
+    ) -> crate::Result<()>;
 
     #[endpoint(ok=Unit,path="/{project_id}/member/{user_id}",method=delete)]
-    async fn remove_member(&self, #[extract(Path)] dto: RemoveMemberDto) -> crate::Result<()>;
+    async fn remove_member(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(Path)] dto: RemoveMemberDto,
+    ) -> crate::Result<()>;
 
-    async fn get_role(&self, project_id: i32, user_id: i32) -> crate::Result<Option<ProjectRole>>;
+    async fn get_role(
+        &self,
+        actor_id: i32,
+        project_id: i32,
+        user_id: i32,
+    ) -> crate::Result<Option<ProjectRole>>;
 }
 
 #[derive(Clone)]
@@ -77,11 +100,16 @@ impl SqlxProjectService {
 
 #[async_trait::async_trait]
 impl ProjectService for SqlxProjectService {
-    async fn get_by_id(&self, id: i32) -> crate::Result<Project> {
-        Ok(Self::fetch_full(&self.pool, id).await?)
+    async fn get_by_id(&self, actor_id: i32, id: i32) -> crate::Result<Project> {
+        Ok(Self::fetch_full(&self.pool, actor_id, id).await?)
     }
 
-    async fn project_tasks(&self, id: i32, pagination: PageRequest) -> crate::Result<Page<Task>> {
+    async fn project_tasks(
+        &self,
+        actor_id: i32,
+        id: i32,
+        pagination: PageRequest,
+    ) -> crate::Result<Page<Task>> {
         let mut items = sqlx::query_as!(
             Task,
             r#"
@@ -95,7 +123,7 @@ impl ProjectService for SqlxProjectService {
                     estimated_time  AS "estimated_time!"
                 FROM read_project_tasks($1, $2)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             id
         )
         .fetch_all(&self.pool)
@@ -112,7 +140,11 @@ impl ProjectService for SqlxProjectService {
         }
     }
 
-    async fn get_list(&self, pagination: PageRequest) -> crate::Result<Page<Project>> {
+    async fn get_list(
+        &self,
+        actor_id: i32,
+        pagination: PageRequest,
+    ) -> crate::Result<Page<Project>> {
         let mut items = sqlx::query_as!(
             Project,
             r#"
@@ -127,7 +159,7 @@ impl ProjectService for SqlxProjectService {
                 tasks           AS "tasks!"
             FROM read_projects($1)
             "#,
-            crate::ACTOR_ID
+            actor_id
         )
         .fetch_all(&self.pool)
         .await?;
@@ -138,13 +170,17 @@ impl ProjectService for SqlxProjectService {
         if items.is_empty() {
             Ok(Page::empty(pagination.limit))
         } else {
-            let last = items.last().and_then(|project| project.id).unwrap_or_default();
+            let last = items
+                .last()
+                .and_then(|project| project.id)
+                .unwrap_or_default();
             Ok(Page::next(last, items, pagination))
         }
     }
 
     async fn create_project(
         &self,
+        actor_id: i32,
         CreateProjectDto {
             manager_id,
             name,
@@ -159,7 +195,7 @@ impl ProjectService for SqlxProjectService {
             r#"
                 SELECT write_project($1, $2, $3, $4, $5, $6) AS "id!"
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             manager_id,
             name,
             description,
@@ -168,13 +204,14 @@ impl ProjectService for SqlxProjectService {
         )
         .fetch_one(&mut *tx)
         .await?;
-        let project = Self::fetch_full(&mut *tx, project_id).await?;
+        let project = Self::fetch_full(&mut *tx, actor_id, project_id).await?;
         tx.commit().await?;
         Ok(project)
     }
 
     async fn update_project(
         &self,
+        actor_id: i32,
         id: i32,
         UpdateProjectDto {
             manager_id,
@@ -187,7 +224,7 @@ impl ProjectService for SqlxProjectService {
         let mut tx = self.pool.begin().await?;
         let _ = sqlx::query_scalar!(
             "SELECT modify_project($1, $2, $3, $4, $5, $6, $7)",
-            crate::ACTOR_ID,
+            actor_id,
             manager_id,
             name,
             description,
@@ -197,14 +234,14 @@ impl ProjectService for SqlxProjectService {
         )
         .fetch_one(&mut *tx)
         .await?;
-        let project = Self::fetch_no_nav(&mut *tx, id).await?;
+        let project = Self::fetch_no_nav(&mut *tx, actor_id, id).await?;
         tx.commit().await?;
         Ok(project)
     }
-    async fn add_member(&self, id: i32, member: AddMemberDro) -> crate::Result<()> {
+    async fn add_member(&self, actor_id: i32, id: i32, member: AddMemberDro) -> crate::Result<()> {
         let _ = sqlx::query!(
             "SELECT write_project_member($1, $2, $3, $4)",
-            crate::ACTOR_ID,
+            actor_id,
             member.member_id,
             id,
             member.role as ProjectRole
@@ -214,10 +251,10 @@ impl ProjectService for SqlxProjectService {
         Ok(())
     }
 
-    async fn remove_member(&self, dto: RemoveMemberDto) -> crate::Result<()> {
+    async fn remove_member(&self, actor_id: i32, dto: RemoveMemberDto) -> crate::Result<()> {
         let _ = sqlx::query_scalar!(
             r#"SELECT delete_project_member($1, $2, $3) AS "affected!""#,
-            crate::ACTOR_ID,
+            actor_id,
             dto.project_id,
             dto.user_id
         )
@@ -226,13 +263,18 @@ impl ProjectService for SqlxProjectService {
         Ok(())
     }
 
-    async fn get_role(&self, project_id: i32, user_id: i32) -> crate::Result<Option<ProjectRole>> {
+    async fn get_role(
+        &self,
+        actor_id: i32,
+        project_id: i32,
+        user_id: i32,
+    ) -> crate::Result<Option<ProjectRole>> {
         let role = sqlx::query_scalar!(
             r#"
             SELECT project_role AS "project_role!: ProjectRole"
             FROM read_project_member_role($1, $2, $3)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             project_id,
             user_id
         )
@@ -241,10 +283,10 @@ impl ProjectService for SqlxProjectService {
         Ok(role)
     }
 
-    async fn delete_project(&self, id: i32) -> crate::Result<()> {
+    async fn delete_project(&self, actor_id: i32, id: i32) -> crate::Result<()> {
         let affected = sqlx::query_scalar!(
             r#"SELECT delete_project($1, $2) AS "affected!""#,
-            crate::ACTOR_ID,
+            actor_id,
             id
         )
         .fetch_one(&self.pool)
@@ -259,33 +301,42 @@ impl ProjectService for SqlxProjectService {
 impl SqlxProjectService {
     fn fetch_full<'a>(
         exec: impl PgExecutor<'a> + 'a,
+        actor_id: i32,
         id: i32,
     ) -> impl Future<Output = Result<Project, sqlx::Error>> + 'a {
-        // TODO: join
         sqlx::query_as!(
             Project,
             r#"
+            WITH authorized AS (
+                SELECT id FROM read_project($1, $2)
+            )
             SELECT
-                manager         AS "manager!",
-                id,
-                name            AS "name!",
-                description,
-                start_time,
-                deadline,
-                members         AS "members!",
-                tasks           AS "tasks!"
-            FROM read_project($1, $2)
+                jsonb_build_object(
+                    'id', (project.manager->>'id')::int,
+                    'referee', project.manager
+                ) AS "manager!: sqlx::types::Json<Relation<User>>",
+                project.id,
+                project.name            AS "name!",
+                project.description,
+                project.start_time,
+                project.deadline,
+                jsonb_build_object('id', 0, 'referee', NULL)
+                    AS "members!: sqlx::types::Json<Relation<Page<User>>>",
+                jsonb_build_object('id', 0, 'referee', NULL)
+                    AS "tasks!: sqlx::types::Json<Relation<Page<()>>>"
+            FROM project_with_navigation AS project
+            JOIN authorized ON authorized.id = project.id
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             id
         )
         .fetch_one(exec)
     }
     fn fetch_no_nav<'a>(
         exec: impl PgExecutor<'a> + 'a,
+        actor_id: i32,
         id: i32,
     ) -> impl Future<Output = Result<Project, sqlx::Error>> + 'a {
-        // TODO: join
         sqlx::query_as!(
             Project,
             r#"
@@ -300,7 +351,7 @@ impl SqlxProjectService {
                 tasks           AS "tasks!"
             FROM read_project($1, $2)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             id
         )
         .fetch_one(exec)

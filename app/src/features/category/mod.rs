@@ -6,12 +6,15 @@ use axum::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::features::auth::jwt::JwtAuthState;
+
 pub mod service;
 
 pub fn routes<R, State>() -> Router<State>
 where
     R: service::CategoryService + FromRef<State>,
     State: Clone + Send + Sync + 'static,
+    JwtAuthState: FromRef<State>
 {
     type EP<R> = service::CategoryServiceEndpoints<R>;
     Router::new()

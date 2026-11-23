@@ -96,7 +96,7 @@ impl AuthService for SqlxAuthService {
     async fn login(&self, dto: SigninDto) -> crate::Result<SessionDto> {
         let user = self
             .user_service
-            .get_by_username_or_email(dto.identity)
+            .get_by_username_or_email(crate::ACTOR_ID, dto.identity)
             .await?;
         user.check_password(dto.password)?;
         let token = self.jwt_state.generate_token(user.id.unwrap(), 6000)?;
@@ -139,7 +139,7 @@ impl AuthService for SqlxAuthService {
     }
 
     async fn change_password(&self, id: i32, dto: ChangePasswordDto) -> crate::Result<()> {
-        let user = self.user_service.get_by_id(id).await?;
+        let user = self.user_service.get_by_id(crate::ACTOR_ID, id).await?;
         user.check_password(dto.old_password)?;
         let hash = bcrypt::hash(dto.new_password, 12)?;
         let affected = sqlx::query_scalar!(

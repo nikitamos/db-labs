@@ -3,31 +3,31 @@
 //! These handlers use runtime SQL instead of `sqlx::query!` macros so adding a
 //! report does not require regenerating the offline query cache.
 
+use aide::axum::{ApiRouter, routing::{get, get_with}};
 use axum::{
-    extract::{Query, State},
-    routing::get,
+    extract::{Query, State}, 
     Json, Router,
 };
 use chrono::NaiveDateTime;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::{AppState, HttpError};
+use crate::{AppState, HttpError, features::auth::UserId};
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/deadline-rank", get(deadline_rank))
-        .route("/deadlines-missed", get(deadlines_missed))
-        .route("/deadlines-next", get(deadlines_next))
-        .route("/least-busy", get(least_busy))
-        .route("/task-status-table", get(task_status_table))
-        .route("/tasks-per-urgency", get(tasks_per_urgency))
-        .route("/search/projects", get(search_projects))
-        .route("/search/tasks", get(search_tasks))
-        .route("/search/users", get(search_users))
+pub fn routes() -> ApiRouter<AppState> {
+    ApiRouter::new()
+        .api_route("/deadline-rank", get_with(deadline_rank, |x| x.tag("report")))
+        .api_route("/deadlines-missed", get_with(deadlines_missed, |x| x.tag("report")))
+        .api_route("/deadlines-next", get_with(deadlines_next, |x| x.tag("report")))
+        .api_route("/least-busy", get_with(least_busy, |x| x.tag("report")))
+        .api_route("/task-status-table", get_with(task_status_table, |x| x.tag("report")))
+        .api_route("/tasks-per-urgency", get_with(tasks_per_urgency, |x| x.tag("report")))
+        .api_route("/search/projects", get_with(search_projects, |x| x.tag("report")))
+        .api_route("/search/tasks", get_with(search_tasks, |x| x.tag("report")))
+        .api_route("/search/users", get_with(search_users, |x| x.tag("report")))
         // Workaround for the existing `read_statuses` function, whose declared
         // `integer` return type does not match the `Color` domain it selects.
-        .route("/statuses", get(status_list))
+        .api_route("/statuses", get_with(status_list, |x| x.tag("report")))
 }
 
 fn timestamp(value: NaiveDateTime) -> String {
@@ -38,7 +38,7 @@ fn opt_timestamp(value: Option<NaiveDateTime>) -> Option<String> {
     value.map(timestamp)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct DeadlineRankQuery {
     project_id: i32,
 }
@@ -46,6 +46,7 @@ struct DeadlineRankQuery {
 /// Tasks of a project ordered by deadline within each assignee.
 async fn deadline_rank(
     State(app): State<AppState>,
+    _user: UserId,
     Query(query): Query<DeadlineRankQuery>,
 ) -> Result<Json<Value>, HttpError> {
     let inner = include_str!("../../sql/complex/deadline_rank.sql")
@@ -89,7 +90,7 @@ async fn deadline_rank(
     Ok(Json(Value::Array(items)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct DeadlinesMissedQuery {
     user_id: i32,
     limit: Option<i64>,
@@ -99,6 +100,7 @@ struct DeadlinesMissedQuery {
 /// Overdue, not-ready tasks of one employee.
 async fn deadlines_missed(
     State(app): State<AppState>,
+    _user: UserId,
     Query(query): Query<DeadlinesMissedQuery>,
 ) -> Result<Json<Value>, HttpError> {
     let rows = sqlx::query_as::<
@@ -150,7 +152,7 @@ async fn deadlines_missed(
     Ok(Json(Value::Array(items)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct DeadlinesNextQuery {
     user_id: i32,
     limit: Option<i64>,
@@ -159,6 +161,7 @@ struct DeadlinesNextQuery {
 /// Upcoming, not-ready tasks of one employee.
 async fn deadlines_next(
     State(app): State<AppState>,
+    _user: UserId,
     Query(query): Query<DeadlinesNextQuery>,
 ) -> Result<Json<Value>, HttpError> {
     let rows = sqlx::query_as::<
@@ -209,7 +212,7 @@ async fn deadlines_next(
     Ok(Json(Value::Array(items)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct LeastBusyQuery {
     project_id: Option<i32>,
     max_tasks: Option<i64>,
@@ -218,6 +221,7 @@ struct LeastBusyQuery {
 /// Employees whose task count is below `max_tasks`.
 async fn least_busy(
     State(app): State<AppState>,
+    _user: UserId,
     Query(query): Query<LeastBusyQuery>,
 ) -> Result<Json<Value>, HttpError> {
     let rows = sqlx::query_as::<_, (Option<i32>, i64)>(include_str!(
@@ -241,7 +245,7 @@ async fn least_busy(
     Ok(Json(Value::Array(items)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct TaskStatusTableQuery {
     project_id: Option<i32>,
     user_id: Option<i32>,
@@ -254,6 +258,7 @@ struct TaskStatusTableQuery {
 /// be serialized safely.
 async fn task_status_table(
     State(app): State<AppState>,
+    _user: UserId,
     Query(query): Query<TaskStatusTableQuery>,
 ) -> Result<Json<Value>, HttpError> {
     let rows = sqlx::query_as::<
@@ -341,7 +346,10 @@ async fn task_status_table(
     Ok(Json(Value::Array(items)))
 }
 
-async fn status_list(State(app): State<AppState>) -> Result<Json<Value>, HttpError> {
+async fn status_list(
+    State(app): State<AppState>,
+    _user: UserId,
+) -> Result<Json<Value>, HttpError> {
     let rows = sqlx::query_as::<_, (i32, String, i32, bool, bool)>(
         r#"
         SELECT id, name, color::int, ready, pending
@@ -371,7 +379,7 @@ async fn status_list(State(app): State<AppState>) -> Result<Json<Value>, HttpErr
     })))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct TasksPerUrgencyQuery {
     user_id: i32,
 }
@@ -379,6 +387,7 @@ struct TasksPerUrgencyQuery {
 /// Task counts per urgency level for one user.
 async fn tasks_per_urgency(
     State(app): State<AppState>,
+    _user: UserId,
     Query(query): Query<TasksPerUrgencyQuery>,
 ) -> Result<Json<Value>, HttpError> {
     let rows = sqlx::query_as::<_, (i64, Option<i32>)>(include_str!(
@@ -401,7 +410,7 @@ async fn tasks_per_urgency(
     Ok(Json(Value::Array(items)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct SearchProjectsQuery {
     q: String,
     threshold: Option<f32>,
@@ -411,6 +420,7 @@ struct SearchProjectsQuery {
 
 async fn search_projects(
     State(app): State<AppState>,
+    _user: UserId,
     Query(query): Query<SearchProjectsQuery>,
 ) -> Result<Json<Value>, HttpError> {
     let rows = sqlx::query_as::<
@@ -452,7 +462,7 @@ async fn search_projects(
     Ok(Json(Value::Array(items)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct SearchTasksQuery {
     q: String,
     threshold: Option<f32>,
@@ -460,6 +470,7 @@ struct SearchTasksQuery {
 
 async fn search_tasks(
     State(app): State<AppState>,
+    _user: UserId,
     Query(query): Query<SearchTasksQuery>,
 ) -> Result<Json<Value>, HttpError> {
     let rows = sqlx::query_as::<
@@ -492,7 +503,7 @@ async fn search_tasks(
     Ok(Json(Value::Array(items)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct SearchUsersQuery {
     q: String,
     limit: Option<i64>,
@@ -501,6 +512,7 @@ struct SearchUsersQuery {
 
 async fn search_users(
     State(app): State<AppState>,
+    _user: UserId,
     Query(query): Query<SearchUsersQuery>,
 ) -> Result<Json<Value>, HttpError> {
     let rows = sqlx::query_as::<

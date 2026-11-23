@@ -31,8 +31,10 @@ pub struct ChangePasswordDto {
     pub new_password: String
 }
 
+/// Authenticated user extracted from the `Authorization: Bearer <jwt>` header.
+///
+/// The type parameter exists so the endpoint macro can use it like the other
+/// generic extractors (`Path<T>`, `Query<T>`, ...). The only supported
+/// instantiation is the default `UserId<i32>`.
 #[derive(Debug)]
-#[non_exhaustive]
-pub struct UserId {
-    pub user_id: i32,
-}
+pub struct UserId<T = i32>(pub T);

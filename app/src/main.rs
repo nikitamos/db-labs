@@ -4,6 +4,7 @@ use aide::axum::routing::get;
 use aide::openapi::{Info, OpenApi};
 use aide::scalar::Scalar;
 use aide::transform::TransformOpenApi;
+use app::entities::user::User;
 use app::extract::WithRejection;
 use app::features::auth::UserId;
 use app::features::user::service::UserService;
@@ -144,20 +145,25 @@ async fn main() {
         .nest("/auth", AuthServiceEndpoints::<SqlxAuthService>::routes())
         .nest("/user", UserServiceEndpoints::<SqlxUserService>::routes())
         .nest("/task", TaskServiceEndpoints::<SqlxTaskService>::routes())
+        .nest("/reports", app::features::reports::routes())
         .api_route("/index", get(index))
         .route("/api.json", get(serve_api))
+        .route("/ffff", get(multiple))
         .route("/docs", Scalar::new("/api.json").axum_route())
         .layer(TraceLayer::new_for_http())
         .finish_api(&mut api)
         .layer(Extension(api))
-        .nest("/reports", app::features::reports::routes())
         .with_state(state);
 
     axum::serve(listener, app).await.unwrap();
 }
 
+async fn multiple(State(db): State<SqlxAuthService>, user: UserId) -> Html<&'static str> {
+    Html("accepted")
+}
+
 async fn index(State(app): State<AppState>, user: UserId) -> Html<String> {
-    if let Ok(user) = app.user.get_by_id(user.user_id).await {
+    if let Ok(user) = app.user.get_by_id(user.0, user.0).await {
         Html(format!("Hello, <i>{} {}</i>", user.first_name(), user.second_name()))
     } else {
         Html(format!("No such user!"))

@@ -1,6 +1,10 @@
 use super::{CreateDiscussionDto, UpdateDiscussionDto};
-use crate::{entities::{Page, PageRequest, discussion::DiscussionPost}, extract::WithRejection};
-use aide::axum::routing::{delete_with as delete, post_with as post, get_with  as get};
+use crate::{
+    entities::{Page, PageRequest, discussion::DiscussionPost, user::User, Relation},
+    extract::WithRejection,
+    features::auth::UserId,
+};
+use aide::axum::routing::{delete_with as delete, get_with as get, post_with as post};
 use axum::extract::{Json, Path, Query};
 use sqlx::PgPool;
 
@@ -8,29 +12,40 @@ type Unit = ();
 
 #[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get, tag="discussion")]
 #[async_trait::async_trait]
-pub trait DiscussionService : Send + Sync + Clone + 'static{
+pub trait DiscussionService: Send + Sync + Clone + 'static {
     #[endpoint(ok=Json::<DiscussionPost>,path="/{id}")]
-    async fn get_by_id(&self, #[extract(Path)] id: i32) -> crate::Result<DiscussionPost>;
+    async fn get_by_id(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(Path)] id: i32,
+    ) -> crate::Result<DiscussionPost>;
 
     #[endpoint(ok=Json::<DiscussionPost>,path="/",method=post)]
     async fn create_post(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(WithRejection<Json>)] body: CreateDiscussionDto,
     ) -> crate::Result<DiscussionPost>;
 
     #[endpoint(ok=Json::<DiscussionPost>,path="/{id}",method=post)]
     async fn update_post(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] id: i32,
         #[extract(WithRejection<Json>)] body: UpdateDiscussionDto,
     ) -> crate::Result<DiscussionPost>;
 
     #[endpoint(ok=Unit,path="/{id}",method=delete)]
-    async fn delete_post(&self, #[extract(Path)] id: i32) -> crate::Result<()>;
+    async fn delete_post(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(Path)] id: i32,
+    ) -> crate::Result<()>;
 
     #[endpoint(ok=Json::<Page::<DiscussionPost>>,path="/by_task/{task_id}")]
     async fn fetch_by_task(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] task_id: i32,
         #[extract(Query)] page: PageRequest,
     ) -> crate::Result<Page<DiscussionPost>>;
@@ -38,6 +53,7 @@ pub trait DiscussionService : Send + Sync + Clone + 'static{
     #[endpoint(ok=Json::<Page::<DiscussionPost>>,path="/by_parent/{parent_id}")]
     async fn fetch_by_parent(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] parent_id: i32,
         #[extract(Query)] page: PageRequest,
     ) -> crate::Result<Page<DiscussionPost>>;
@@ -56,27 +72,47 @@ impl SqlxDiscussionService {
 
 #[async_trait::async_trait]
 impl DiscussionService for SqlxDiscussionService {
-    async fn get_by_id(&self, id: i32) -> crate::Result<DiscussionPost> {
+    async fn get_by_id(&self, actor_id: i32, id: i32) -> crate::Result<DiscussionPost> {
         Ok(sqlx::query_as!(
             DiscussionPost,
             r#"
+            WITH authorized AS (
+                SELECT id FROM read_discussion_post($1, $2)
+            )
             SELECT
-                id,
-                task    AS task,
-                author  AS author,
-                title   AS "title!",
-                body    AS "body!",
-                parent  AS parent
-            FROM read_discussion_post($1, $2)
+                post.id,
+                post.task_id    AS task,
+                CASE
+                    WHEN post.author IS NULL THEN
+                        jsonb_build_object('id', 0, 'referee', NULL)
+                    ELSE
+                        jsonb_build_object(
+                            'id', (post.author->>'author.id')::int,
+                            'referee', (post.author - 'author.id')
+                                || jsonb_build_object(
+                                    'id', (post.author->>'author.id')::int
+                                )
+                        )
+                END AS "author!: sqlx::types::Json<Relation<User>>",
+                discussion.title   AS "title!",
+                post.body          AS "body!",
+                post.parent_id     AS parent
+            FROM post_with_author AS post
+            JOIN discussion_posts AS discussion ON discussion.id = post.id
+            JOIN authorized ON authorized.id = post.id
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             id
         )
         .fetch_one(&self.pool)
         .await?)
     }
 
-    async fn create_post(&self, body: CreateDiscussionDto) -> crate::Result<DiscussionPost> {
+    async fn create_post(
+        &self,
+        actor_id: i32,
+        body: CreateDiscussionDto,
+    ) -> crate::Result<DiscussionPost> {
         Ok(sqlx::query_as!(
             DiscussionPost,
             r#"
@@ -89,7 +125,7 @@ impl DiscussionService for SqlxDiscussionService {
                 parent  AS parent
             FROM write_discussion_post($1, $2, $3, $4, $5, $6)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             body.task_id,
             body.author_id,
             body.title,
@@ -102,6 +138,7 @@ impl DiscussionService for SqlxDiscussionService {
 
     async fn update_post(
         &self,
+        actor_id: i32,
         id: i32,
         body: UpdateDiscussionDto,
     ) -> crate::Result<DiscussionPost> {
@@ -117,7 +154,7 @@ impl DiscussionService for SqlxDiscussionService {
                 parent  AS parent
             FROM modify_discussion_post($1, $2, $3, $4)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             body.title,
             body.body,
             id
@@ -126,10 +163,10 @@ impl DiscussionService for SqlxDiscussionService {
         .await?)
     }
 
-    async fn delete_post(&self, id: i32) -> crate::Result<()> {
+    async fn delete_post(&self, actor_id: i32, id: i32) -> crate::Result<()> {
         let affected = sqlx::query_scalar!(
             r#"SELECT delete_discussion_post($1, $2) AS "affected!""#,
-            crate::ACTOR_ID,
+            actor_id,
             id
         )
         .fetch_one(&self.pool)
@@ -142,6 +179,7 @@ impl DiscussionService for SqlxDiscussionService {
 
     async fn fetch_by_task(
         &self,
+        actor_id: i32,
         task_id: i32,
         page: PageRequest,
     ) -> crate::Result<Page<DiscussionPost>> {
@@ -157,7 +195,7 @@ impl DiscussionService for SqlxDiscussionService {
                 parent  AS parent
             FROM read_discussion_posts_by_task($1, $2)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             task_id
         )
         .fetch_all(&self.pool)
@@ -176,6 +214,7 @@ impl DiscussionService for SqlxDiscussionService {
 
     async fn fetch_by_parent(
         &self,
+        actor_id: i32,
         parent_id: i32,
         page: PageRequest,
     ) -> crate::Result<Page<DiscussionPost>> {
@@ -191,7 +230,7 @@ impl DiscussionService for SqlxDiscussionService {
                 parent  AS parent
             FROM read_discussion_posts_by_parent($1, $2)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             parent_id
         )
         .fetch_all(&self.pool)

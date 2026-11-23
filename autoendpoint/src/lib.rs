@@ -59,7 +59,8 @@ pub fn endpoints(
             where
                 State : std::clone::Clone + std::marker::Send
                       + std::marker::Sync + 'static,
-                Repo : axum::extract::FromRef<State>
+                Repo : axum::extract::FromRef<State>,
+                crate::features::auth::jwt::JwtAuthState: axum::extract::FromRef<State>
             {
                 #router::new()
                     #(#routes)*
@@ -67,7 +68,7 @@ pub fn endpoints(
         }
     };
 
-    println!("{new_struct}");
+    // println!("{new_struct}");
 
     new_struct.into()
 }
@@ -216,7 +217,7 @@ fn make_endpoint_arg(ident: &Pat, typ: &Type, extractor: Type) -> syn::Result<To
     let res = quote! {
         #extracted_pat: #extractor_type
     };
-    println!("&&RES: {}", res);
+    // println!("&&RES: {}", res);
     Ok(res)
 }
 
@@ -233,7 +234,6 @@ struct ExtractorTree {
 }
 
 fn extract(extractor: &Type, params: ExtractionParams) -> syn::Result<ExtractorTree> {
-    println!("&&EXTRACT");
     match extractor {
         Type::Path(type_path) => match type_path.path.segments.last().unwrap().arguments {
             syn::PathArguments::AngleBracketed(ref args) => {

@@ -76,7 +76,7 @@ pub async fn populate_db(State(app): State<AppState>) -> Result<(), HttpError> {
     for i in 0..5 {
         let category = app
             .category
-            .create_category(CreateCategoryDto {
+            .create_category(crate::ACTOR_ID, CreateCategoryDto {
                 name: format!("Category {i}"),
                 badge_color: 0x00FF_0000u32.wrapping_add(i as u32) as i32,
                 urgency: i + 1,
@@ -92,7 +92,7 @@ pub async fn populate_db(State(app): State<AppState>) -> Result<(), HttpError> {
     for i in 0..5 {
         let status = app
             .status
-            .create_status(CreateStatusDto {
+            .create_status(crate::ACTOR_ID, CreateStatusDto {
                 name: format!("Status {i}"),
                 color: 0x0000_FF00u32.wrapping_add(i as u32) as i32,
                 ready: i == 4,
@@ -110,7 +110,7 @@ pub async fn populate_db(State(app): State<AppState>) -> Result<(), HttpError> {
     for i in 0..5 {
         let project = app
             .project
-            .create_project(CreateProjectDto {
+            .create_project(crate::ACTOR_ID, CreateProjectDto {
                 manager_id: users[i].id.unwrap(),
                 name: format!("Project {i}"),
                 description: format!("Sample description for project {i}"),
@@ -135,6 +135,7 @@ pub async fn populate_db(State(app): State<AppState>) -> Result<(), HttpError> {
             let _ = app
                 .project
                 .add_member(
+                    crate::ACTOR_ID,
                     project_id,
                     AddMemberDro {
                         member_id: member.id.unwrap(),
@@ -152,7 +153,7 @@ pub async fn populate_db(State(app): State<AppState>) -> Result<(), HttpError> {
     for i in 0..7usize {
         let task = app
             .task
-            .create_task(CreateTaskDto {
+            .create_task(crate::ACTOR_ID, CreateTaskDto {
                 project_id: projects[i % projects.len()].id.unwrap(),
                 name: format!("Task {i}"),
                 description: Some(format!("Description for task {i}")),
@@ -176,7 +177,7 @@ pub async fn populate_db(State(app): State<AppState>) -> Result<(), HttpError> {
         // Ignore conflict errors — DO NOTHING protects duplicates anyway.
         let _ = app
             .task
-            .add_to_categories(task.id.unwrap(), associated)
+            .add_to_categories(crate::ACTOR_ID, task.id.unwrap(), associated)
             .await;
     }
 
@@ -185,7 +186,7 @@ pub async fn populate_db(State(app): State<AppState>) -> Result<(), HttpError> {
     // ------------------------------------------------------------------
     for i in 0..5usize {
         app.discussion
-            .create_post(CreateDiscussionDto {
+            .create_post(crate::ACTOR_ID, CreateDiscussionDto {
                 task_id: tasks[i % tasks.len()].id.unwrap(),
                 author_id: users[i % users.len()].id.unwrap(),
                 title: format!("Discussion {i}"),

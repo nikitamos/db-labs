@@ -25,11 +25,17 @@ impl Default for PageRequest {
     }
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Relation<R> {
     pub id: i32,
     #[serde(rename = "referee")]
     pub value: Option<Box<R>>,
+}
+
+impl<R> From<sqlx::types::Json<Relation<R>>> for Relation<R> {
+    fn from(value: sqlx::types::Json<Relation<R>>) -> Self {
+        value.0
+    }
 }
 
 impl<R> From<i32> for Relation<R> {

@@ -1,5 +1,5 @@
 use super::{CreateCategoryDto, UpdateCategoryDto};
-use crate::{entities::{Page, PageRequest, category::Category}, extract::WithRejection};
+use crate::{entities::{Page, PageRequest, category::Category}, extract::WithRejection, features::auth::UserId};
 use axum::extract::{Json, Path, Query};
 use sqlx::PgPool;
 use aide::axum::routing::{get_with as get,post_with as post, delete_with as delete};
@@ -10,29 +10,40 @@ type Unit = ();
 #[async_trait::async_trait]
 pub trait CategoryService: Send + Sync + Clone + 'static {
     #[endpoint(ok=Json::<Category>,path="/{id}")]
-    async fn get_by_id(&self, #[extract(Path)] id: i32) -> crate::Result<Category>;
+    async fn get_by_id(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(Path)] id: i32,
+    ) -> crate::Result<Category>;
 
     #[endpoint(ok=Json::<Page::<Category>>, path="/")]
     async fn get_list(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Query)] pagination: PageRequest,
     ) -> crate::Result<Page<Category>>;
 
     #[endpoint(ok=Json::<Category>,method=post,path="/")]
     async fn create_category(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(WithRejection<Json>)] body: CreateCategoryDto,
     ) -> crate::Result<Category>;
 
     #[endpoint(ok=Json::<Category>,method=post,path="/{id}")]
     async fn update_category(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] id: i32,
         #[extract(WithRejection<Json>)] body: UpdateCategoryDto,
     ) -> crate::Result<Category>;
 
     #[endpoint(ok=Unit,method=delete,path="/{id}")]
-    async fn delete_category(&self, #[extract(Path)] id: i32) -> crate::Result<()>;
+    async fn delete_category(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(Path)] id: i32,
+    ) -> crate::Result<()>;
 }
 
 #[derive(Clone)]
@@ -48,7 +59,7 @@ impl SqlxCategoryService {
 
 #[async_trait::async_trait]
 impl CategoryService for SqlxCategoryService {
-    async fn get_by_id(&self, id: i32) -> crate::Result<Category> {
+    async fn get_by_id(&self, actor_id: i32, id: i32) -> crate::Result<Category> {
         Ok(sqlx::query_as!(
             Category,
             r#"
@@ -59,14 +70,14 @@ impl CategoryService for SqlxCategoryService {
                 urgency      AS "urgency!"
             FROM read_category($1, $2)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             id
         )
         .fetch_one(&self.pool)
         .await?)
     }
 
-    async fn get_list(&self, pagination: PageRequest) -> crate::Result<Page<Category>> {
+    async fn get_list(&self, actor_id: i32, pagination: PageRequest) -> crate::Result<Page<Category>> {
         let mut items = sqlx::query_as!(
             Category,
             r#"
@@ -77,7 +88,7 @@ impl CategoryService for SqlxCategoryService {
                 urgency      AS "urgency!"
             FROM read_categories($1)
             "#,
-            crate::ACTOR_ID
+            actor_id
         )
         .fetch_all(&self.pool)
         .await?;
@@ -93,7 +104,7 @@ impl CategoryService for SqlxCategoryService {
         }
     }
 
-    async fn create_category(&self, body: CreateCategoryDto) -> crate::Result<Category> {
+    async fn create_category(&self, actor_id: i32, body: CreateCategoryDto) -> crate::Result<Category> {
         // todo!()
         Ok(sqlx::query_as!(
             Category,
@@ -105,7 +116,7 @@ impl CategoryService for SqlxCategoryService {
                 urgency      AS "urgency!"
             FROM write_category($1, $2, $3, $4)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             body.name,
             body.badge_color,
             body.urgency
@@ -116,6 +127,7 @@ impl CategoryService for SqlxCategoryService {
 
     async fn update_category(
         &self,
+        actor_id: i32,
         id: i32,
         body: UpdateCategoryDto,
     ) -> crate::Result<Category> {
@@ -129,7 +141,7 @@ impl CategoryService for SqlxCategoryService {
                 urgency      AS "urgency!"
             FROM modify_category($1, $2, $3, $4, $5)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             body.name,
             body.badge_color,
             body.urgency,
@@ -139,10 +151,10 @@ impl CategoryService for SqlxCategoryService {
         .await?)
     }
 
-    async fn delete_category(&self, id: i32) -> crate::Result<()> {
+    async fn delete_category(&self, actor_id: i32, id: i32) -> crate::Result<()> {
         let affected = sqlx::query_scalar!(
             r#"SELECT delete_category($1, $2) AS "affected!""#,
-            crate::ACTOR_ID,
+            actor_id,
             id
         )
         .fetch_one(&self.pool)

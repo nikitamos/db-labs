@@ -1,6 +1,10 @@
 use super::{CreateTaskDto, UpdateTaskDto};
-use crate::{entities::{Page, PageRequest, task::Task}, extract::WithRejection, features::task::DependencyDto};
-use aide::axum::routing::{delete_with as delete, post_with as post, get_with as get};
+use crate::{
+    entities::{Page, PageRequest, task::Task, Relation, status::Status, user::User},
+    extract::WithRejection,
+    features::{auth::UserId, task::DependencyDto},
+};
+use aide::axum::routing::{delete_with as delete, get_with as get, post_with as post};
 use axum::extract::{Json, Path, Query};
 use chrono::DateTime;
 use sqlx::PgPool;
@@ -9,45 +13,61 @@ type Unit = ();
 
 #[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get, tag="task")]
 #[async_trait::async_trait]
-pub trait TaskService : Clone + Send + Sync + 'static{
+pub trait TaskService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Json::<Task>,path="/{id}")]
-    async fn get_by_id(&self, #[extract(Path)] id: i32) -> crate::Result<Task>;
+    async fn get_by_id(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(Path)] id: i32,
+    ) -> crate::Result<Task>;
 
     #[endpoint(ok=Json::<Page::<Task>>,path="/")]
     async fn get_list(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Query)] pagination: PageRequest,
     ) -> crate::Result<Page<Task>>;
 
     #[endpoint(ok=Json::<Task>,path="/",method=post)]
-    async fn create_task(&self, #[extract(WithRejection<Json>)] body: CreateTaskDto) -> crate::Result<Task>;
+    async fn create_task(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(WithRejection<Json>)] body: CreateTaskDto,
+    ) -> crate::Result<Task>;
 
     #[endpoint(ok=Json::<Task>,path="/{id}",method=post)]
     async fn update_task(
         &self,
         #[extract(Path)] id: i32,
+        #[extract(UserId)] actor_id: i32,
         #[extract(WithRejection<Json>)] body: UpdateTaskDto,
     ) -> crate::Result<Task>;
 
     #[endpoint(ok=Unit,path="/{id}",method=delete)]
-    async fn delete_task(&self, #[extract(Path)] id: i32) -> crate::Result<Unit>;
+    async fn delete_task(
+        &self,
+        #[extract(UserId)] actor_id: i32,
+        #[extract(Path)] id: i32,
+    ) -> crate::Result<Unit>;
 
     #[endpoint(ok=Unit, path="/{dependent}/dep/{dependency}", method=post)]
     async fn add_dependency(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] dep: DependencyDto,
     ) -> crate::Result<()>;
 
     #[endpoint(ok=Unit, path="/{dependent}/dep/{dependency}", method=delete)]
     async fn remove_dependency(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] dep: DependencyDto,
     ) -> crate::Result<()>;
-
 
     #[endpoint(ok=Unit,path="/{task_id}/categories/add",method=post)]
     async fn add_to_categories(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] task_id: i32,
         #[extract(WithRejection<Json>)] categories: Vec<i32>,
     ) -> crate::Result<()>;
@@ -55,6 +75,7 @@ pub trait TaskService : Clone + Send + Sync + 'static{
     #[endpoint(ok=Unit,path="/{task_id}/categories/delete",method=post)]
     async fn remove_from_categories(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] task_id: i32,
         #[extract(WithRejection<Json>)] categories: Vec<i32>,
     ) -> crate::Result<()>;
@@ -62,6 +83,7 @@ pub trait TaskService : Clone + Send + Sync + 'static{
     #[endpoint(ok=Json::<Page::<Task>>,path="/by_category/{category}")]
     async fn find_by_category(
         &self,
+        #[extract(UserId)] actor_id: i32,
         #[extract(Path)] category: i32,
         #[extract(Query)] page: PageRequest,
     ) -> crate::Result<Page<Task>>;
@@ -80,28 +102,38 @@ impl SqlxTaskService {
 
 #[async_trait::async_trait]
 impl TaskService for SqlxTaskService {
-    async fn get_by_id(&self, id: i32) -> crate::Result<Task> {
+    async fn get_by_id(&self, actor_id: i32, id: i32) -> crate::Result<Task> {
         Ok(sqlx::query_as!(
             Task,
             r#"
+            WITH authorized AS (
+                SELECT id FROM read_task($1, $2)
+            )
             SELECT
-                id,
-                name            AS "name!",
-                description,
-                deadline        AS "deadline!",
-                status          AS "status!",
-                assignee,
-                estimated_time  AS "estimated_time!"
-            FROM read_task($1, $2)
+                task.id,
+                task.name            AS "name!",
+                task.description,
+                task.deadline        AS "deadline!",
+                jsonb_build_object(
+                    'id', (task.status->>'id')::int,
+                    'referee', task.status
+                ) AS "status!: sqlx::types::Json<Relation<Status>>",
+                jsonb_build_object(
+                    'id', (task.assignee->>'id')::int,
+                    'referee', task.assignee
+                ) AS "assignee!: sqlx::types::Json<Relation<User>>",
+                task.estimated_time  AS "estimated_time!"
+            FROM task_with_navigation_json AS task
+            JOIN authorized ON authorized.id = task.id
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             id
         )
         .fetch_one(&self.pool)
         .await?)
     }
 
-    async fn get_list(&self, pagination: PageRequest) -> crate::Result<Page<Task>> {
+    async fn get_list(&self, actor_id: i32, pagination: PageRequest) -> crate::Result<Page<Task>> {
         let mut items = sqlx::query_as!(
             Task,
             r#"
@@ -115,7 +147,7 @@ impl TaskService for SqlxTaskService {
                 estimated_time  AS "estimated_time!"
             FROM read_tasks($1)
             "#,
-            crate::ACTOR_ID
+            actor_id
         )
         .fetch_all(&self.pool)
         .await?;
@@ -131,7 +163,7 @@ impl TaskService for SqlxTaskService {
         }
     }
 
-    async fn create_task(&self, body: CreateTaskDto) -> crate::Result<Task> {
+    async fn create_task(&self, actor_id: i32, body: CreateTaskDto) -> crate::Result<Task> {
         Ok(sqlx::query_as!(
             Task,
             r#"
@@ -145,7 +177,7 @@ impl TaskService for SqlxTaskService {
                 estimated_time  AS "estimated_time!"
             FROM write_task($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             body.project_id,
             body.name,
             body.description,
@@ -158,7 +190,12 @@ impl TaskService for SqlxTaskService {
         .await?)
     }
 
-    async fn update_task(&self, id: i32, body: UpdateTaskDto) -> crate::Result<Task> {
+    async fn update_task(
+        &self,
+        id: i32,
+        actor_id: i32,
+        body: UpdateTaskDto,
+    ) -> crate::Result<Task> {
         Ok(sqlx::query_as!(
             Task,
             r#"
@@ -172,7 +209,7 @@ impl TaskService for SqlxTaskService {
                 estimated_time  AS "estimated_time!"
             FROM modify_task($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             body.name,
             body.description,
             body.deadline.as_ref().map(DateTime::naive_utc),
@@ -185,24 +222,28 @@ impl TaskService for SqlxTaskService {
         .await?)
     }
 
-    async fn delete_task(&self, id: i32) -> crate::Result<()> {
-        let affected = sqlx::query_scalar!(
-            r#"SELECT delete_task($1, $2) AS "affected!""#,
-            crate::ACTOR_ID,
-            id
-        )
-        .fetch_one(&self.pool)
-        .await?;
+    async fn delete_task(&self, actor_id: i32, id: i32) -> crate::Result<()> {
+        let affected =
+            sqlx::query_scalar!(r#"SELECT delete_task($1, $2) AS "affected!""#, actor_id, id)
+                .fetch_one(&self.pool)
+                .await?;
         if affected == 0 {
             tracing::warn!("attempt to remove non-existent task");
         }
         Ok(())
     }
 
-    async fn add_dependency(&self, DependencyDto { dependent, dependency }: DependencyDto) -> crate::Result<()> {
+    async fn add_dependency(
+        &self,
+        actor_id: i32,
+        DependencyDto {
+            dependent,
+            dependency,
+        }: DependencyDto,
+    ) -> crate::Result<()> {
         let _ = sqlx::query_scalar!(
             r#"SELECT write_task_dependency($1, $2, $3) AS "affected!""#,
-            crate::ACTOR_ID,
+            actor_id,
             dependent,
             dependency
         )
@@ -211,10 +252,17 @@ impl TaskService for SqlxTaskService {
         Ok(())
     }
 
-    async fn remove_dependency(&self, DependencyDto { dependent, dependency }: DependencyDto) -> crate::Result<()> {
+    async fn remove_dependency(
+        &self,
+        actor_id: i32,
+        DependencyDto {
+            dependent,
+            dependency,
+        }: DependencyDto,
+    ) -> crate::Result<()> {
         let _ = sqlx::query_scalar!(
             r#"SELECT delete_task_dependency($1, $2, $3) AS "affected!""#,
-            crate::ACTOR_ID,
+            actor_id,
             dependent,
             dependency
         )
@@ -223,7 +271,12 @@ impl TaskService for SqlxTaskService {
         Ok(())
     }
 
-    async fn add_to_categories(&self, task_id: i32, categories: Vec<i32>) -> crate::Result<()> {
+    async fn add_to_categories(
+        &self,
+        actor_id: i32,
+        task_id: i32,
+        categories: Vec<i32>,
+    ) -> crate::Result<()> {
         if categories.is_empty() {
             return Ok(());
         }
@@ -231,7 +284,7 @@ impl TaskService for SqlxTaskService {
         for category_id in categories {
             let _ = sqlx::query_scalar!(
                 r#"SELECT write_task_category($1, $2, $3) AS "affected!""#,
-                crate::ACTOR_ID,
+                actor_id,
                 task_id,
                 category_id
             )
@@ -244,6 +297,7 @@ impl TaskService for SqlxTaskService {
 
     async fn remove_from_categories(
         &self,
+        actor_id: i32,
         task_id: i32,
         categories: Vec<i32>,
     ) -> crate::Result<()> {
@@ -252,7 +306,7 @@ impl TaskService for SqlxTaskService {
         }
         let _ = sqlx::query_scalar!(
             r#"SELECT delete_task_categories($1, $2, $3) AS "affected!""#,
-            crate::ACTOR_ID,
+            actor_id,
             task_id,
             &categories
         )
@@ -263,6 +317,7 @@ impl TaskService for SqlxTaskService {
 
     async fn find_by_category(
         &self,
+        actor_id: i32,
         category: i32,
         page: PageRequest,
     ) -> crate::Result<Page<Task>> {
@@ -279,7 +334,7 @@ impl TaskService for SqlxTaskService {
                 estimated_time  AS "estimated_time!"
             FROM read_tasks_by_category($1, $2)
             "#,
-            crate::ACTOR_ID,
+            actor_id,
             category
         )
         .fetch_all(&self.pool)
@@ -303,4 +358,3 @@ impl TaskService for SqlxTaskService {
 //         .await?;
 //     Ok(())
 // }
-
