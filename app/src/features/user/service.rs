@@ -1,16 +1,15 @@
-use aide::axum::routing::{delete, post,get};
+use aide::axum::routing::{delete_with as delete, post_with as post, get_with as get};
 use autoendpoint::endpoints;
 use axum::extract::{Json, Path, Query};
 use sqlx::PgPool;
 
 use crate::{
-    entities::{Page, PageRequest, user::User},
-    features::user::UpdateUserDto,
+    entities::{Page, PageRequest, user::User}, extract::WithRejection, features::user::UpdateUserDto,
 };
 
 type Unit = ();
 
-#[endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get)]
+#[endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get, tag="users")]
 #[async_trait::async_trait]
 pub trait UserService: Clone + Send + Sync + 'static {
     #[endpoint(path="/identity/{identity}",ok=Json::<User>)]
@@ -23,7 +22,7 @@ pub trait UserService: Clone + Send + Sync + 'static {
     async fn update(
         &self,
         #[extract(Path)] id: i32,
-        #[extract(Json)] dto: UpdateUserDto,
+        #[extract(WithRejection<Json>)] dto: UpdateUserDto,
     ) -> crate::Result<User>;
 
     #[endpoint(path="/{id}",ok=Unit,method=delete)]

@@ -4,7 +4,13 @@ use parking_lot::Mutex;
 use std::path::Path;
 use std::{fmt::Display, str::FromStr, sync::Arc};
 
-use axum::{Json, extract::FromRef, http::StatusCode, response::IntoResponse};
+use axum::{
+    Json,
+    body::Body,
+    extract::{FromRef, FromRequest, FromRequestParts, rejection::JsonRejection},
+    http::StatusCode,
+    response::IntoResponse,
+};
 use serde::Serialize;
 use sqlx::{
     Pool, Postgres,
@@ -16,10 +22,14 @@ use tracing::{error, warn};
 use crate::{
     config::AppConfig,
     features::{
-        auth::service::SqlxAuthService, category::service::SqlxCategoryService,
-        discussion::service::SqlxDiscussionService, maintenance::HealthStatus,
-        project::service::SqlxProjectService, status::service::SqlxStatusService,
-        task::service::SqlxTaskService, user::service::SqlxUserService,
+        auth::{jwt::JwtAuthState, service::SqlxAuthService},
+        category::service::SqlxCategoryService,
+        discussion::service::SqlxDiscussionService,
+        maintenance::HealthStatus,
+        project::service::SqlxProjectService,
+        status::service::SqlxStatusService,
+        task::service::SqlxTaskService,
+        user::service::SqlxUserService,
     },
 };
 
@@ -34,6 +44,7 @@ pub mod features {
     pub mod discussion;
     pub mod maintenance;
     pub mod project;
+    pub mod reports;
     pub mod status;
     pub mod task;
     pub mod user;
@@ -50,6 +61,7 @@ pub struct AppState {
     pub user: SqlxUserService,
     pub auth: SqlxAuthService,
     pub health: Arc<Mutex<HealthStatus>>,
+    pub auth_state: JwtAuthState,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -60,8 +72,12 @@ pub enum Error {
     Bcrypt(#[from] bcrypt::BcryptError),
     #[error("passwords do not match")]
     WrongPassword,
-    #[error("Requested item does not exist")]
+    #[error("requested item does not exist")]
     NotFound,
+    #[error("authentication error: {0}")]
+    JwtError(#[from] jsonwebtoken::errors::Error),
+    #[error("Invalid auth token provided")]
+    InvalidAuthToken,
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -84,16 +100,25 @@ impl AppState {
             .await
             .unwrap();
         let user = SqlxUserService::new(pool.clone());
+        let secret: &[u8];
+        if let Some(ref s) = cfg.jwt_secret {
+            secret = s.as_bytes();
+        } else {
+            tracing::warn!("JWT_SECRET is not set by the environment.");
+            secret = "A1B3Y6R3V8A4L8G_a;l_".as_bytes();
+        }
+        let auth_state = JwtAuthState::from_secret(secret);
         Self {
             category: SqlxCategoryService::new(pool.clone()),
             discussion: SqlxDiscussionService::new(pool.clone()),
             project: SqlxProjectService::new(pool.clone()),
             status: SqlxStatusService::new(pool.clone()),
             task: SqlxTaskService::new(pool.clone()),
-            auth: SqlxAuthService::new(pool.clone(), user.clone()),
+            auth: SqlxAuthService::new(pool.clone(), user.clone(), auth_state.clone()),
             user,
             health: Arc::new(Default::default()),
             db: pool,
+            auth_state: auth_state,
         }
     }
 
@@ -207,7 +232,15 @@ impl From<Error> for HttpError {
             Error::NotFound => Self::new(StatusCode::NOT_FOUND, "requested item does not exist"),
             Error::WrongPassword => Self::new(StatusCode::UNAUTHORIZED, "wrong password"),
             Error::Bcrypt(e) => Self::from_bcrypt(e),
+            Error::InvalidAuthToken => Self::new(StatusCode::UNAUTHORIZED, "invalid auth token"),
+            Error::JwtError(e) => Self::from_jwt(e),
         }
+    }
+}
+
+impl From<sqlx::Error> for HttpError {
+    fn from(value: sqlx::Error) -> Self {
+        Self::from_sqlx_error(value)
     }
 }
 
@@ -215,16 +248,14 @@ impl HttpError {
     pub fn from_sqlx_error(e: sqlx::Error) -> Self {
         tracing::error!(db_error = %e, "db error occurred while processing");
         match e {
-            sqlx::Error::Database(database_error) => {
-                Self::new(
-                    StatusCode::BAD_REQUEST,
-                    format!(
-                        "data consistency error in `{}`: {}",
-                        database_error.table().unwrap_or("unknown"),
-                        database_error.message()
-                    ),
-                )
-            },
+            sqlx::Error::Database(database_error) => Self::new(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "data consistency error in `{}`: {}",
+                    database_error.table().unwrap_or("unknown"),
+                    database_error.message()
+                ),
+            ),
             sqlx::Error::RowNotFound => Self::new(
                 StatusCode::NOT_FOUND,
                 "at least one of entities implied by the request doesn't exist",
@@ -238,6 +269,14 @@ impl HttpError {
     pub fn from_bcrypt(e: bcrypt::BcryptError) -> Self {
         tracing::error!(bcrypt_error=%e);
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "password issues")
+    }
+    pub fn from_jwt(e: jsonwebtoken::errors::Error) -> Self {
+        match e.into_kind() {
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
+                Self::new(StatusCode::UNAUTHORIZED, "token expired")
+            }
+            _ => Self::new(StatusCode::UNAUTHORIZED, "invalid auth token"),
+        }
     }
 }
 
@@ -293,3 +332,5 @@ macro_rules! with {
       }
   };
 }
+
+pub mod extract;

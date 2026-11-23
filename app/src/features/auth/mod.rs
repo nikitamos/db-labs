@@ -2,6 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub mod service;
+pub mod jwt;
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct SignupDto {
@@ -28,4 +29,10 @@ pub struct SessionDto {
 pub struct ChangePasswordDto {
     pub old_password: String,
     pub new_password: String
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct UserId {
+    pub user_id: i32,
 }

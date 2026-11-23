@@ -1,13 +1,13 @@
 use super::{CreateTaskDto, UpdateTaskDto};
-use crate::{entities::{Page, PageRequest, task::Task}, features::task::DependencyDto};
-use aide::axum::routing::{get,delete, post};
+use crate::{entities::{Page, PageRequest, task::Task}, extract::WithRejection, features::task::DependencyDto};
+use aide::axum::routing::{delete_with as delete, post_with as post, get_with as get};
 use axum::extract::{Json, Path, Query};
 use chrono::DateTime;
 use sqlx::PgPool;
 
 type Unit = ();
 
-#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get)]
+#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get, tag="task")]
 #[async_trait::async_trait]
 pub trait TaskService : Clone + Send + Sync + 'static{
     #[endpoint(ok=Json::<Task>,path="/{id}")]
@@ -20,13 +20,13 @@ pub trait TaskService : Clone + Send + Sync + 'static{
     ) -> crate::Result<Page<Task>>;
 
     #[endpoint(ok=Json::<Task>,path="/",method=post)]
-    async fn create_task(&self, #[extract(Json)] body: CreateTaskDto) -> crate::Result<Task>;
+    async fn create_task(&self, #[extract(WithRejection<Json>)] body: CreateTaskDto) -> crate::Result<Task>;
 
     #[endpoint(ok=Json::<Task>,path="/{id}",method=post)]
     async fn update_task(
         &self,
         #[extract(Path)] id: i32,
-        #[extract(Json)] body: UpdateTaskDto,
+        #[extract(WithRejection<Json>)] body: UpdateTaskDto,
     ) -> crate::Result<Task>;
 
     #[endpoint(ok=Unit,path="/{id}",method=delete)]
@@ -49,14 +49,14 @@ pub trait TaskService : Clone + Send + Sync + 'static{
     async fn add_to_categories(
         &self,
         #[extract(Path)] task_id: i32,
-        #[extract(Json)] categories: Vec<i32>,
+        #[extract(WithRejection<Json>)] categories: Vec<i32>,
     ) -> crate::Result<()>;
 
     #[endpoint(ok=Unit,path="/{task_id}/categories/delete",method=post)]
     async fn remove_from_categories(
         &self,
         #[extract(Path)] task_id: i32,
-        #[extract(Json)] categories: Vec<i32>,
+        #[extract(WithRejection<Json>)] categories: Vec<i32>,
     ) -> crate::Result<()>;
 
     #[endpoint(ok=Json::<Page::<Task>>,path="/by_category/{category}")]
@@ -90,7 +90,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee AS "assignee?",
+                assignee,
                 estimated_time  AS "estimated_time!"
             FROM read_task($1, $2)
             "#,
@@ -111,7 +111,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee AS "assignee?",
+                assignee,
                 estimated_time  AS "estimated_time!"
             FROM read_tasks($1)
             "#,
@@ -141,7 +141,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee AS "assignee?",
+                assignee,
                 estimated_time  AS "estimated_time!"
             FROM write_task($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
@@ -168,7 +168,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee AS "assignee?",
+                assignee,
                 estimated_time  AS "estimated_time!"
             FROM modify_task($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
@@ -275,7 +275,7 @@ impl TaskService for SqlxTaskService {
                 description,
                 deadline        AS "deadline!",
                 status          AS "status!",
-                assignee AS "assignee?",
+                assignee,
                 estimated_time  AS "estimated_time!"
             FROM read_tasks_by_category($1, $2)
             "#,

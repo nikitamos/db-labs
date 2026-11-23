@@ -14,6 +14,7 @@ pub struct EndpointOptions<'a> {
     pub method: Option<Cow<'a, Path>>,
     pub path: Option<Cow<'a, LitStr>>,
     pub router: Option<Path>, // ok_wrapper: Option<Type>
+    pub tag: Option<LitStr>
 }
 
 impl<'a> Default for EndpointOptions<'a> {
@@ -24,6 +25,7 @@ impl<'a> Default for EndpointOptions<'a> {
             method: None,
             path: Default::default(),
             router: None,
+            tag: None
         }
     }
 }
@@ -134,6 +136,7 @@ impl<'a> EndpointOptions<'a> {
             method: another.method.or(self.method),
             path: another.path.or(self.path), // ok_wrapper: another.ok_wrapper.or(self::ok)
             router: another.router.or(self.router),
+            tag: another.tag.or(self.tag)
         }
     }
 }
@@ -151,6 +154,7 @@ impl<'a> Parse for EndpointOptions<'a> {
                 "method" => result.method = Some(Cow::Owned(kv.value.into_path()?)),
                 "path" => result.path = Some(Cow::Owned(kv.value.into_string()?)),
                 "router" => result.router = Some(kv.value.into_path()?),
+                "tag" => result.tag = Some(kv.value.into_string()?),
                 _ => {
                     return Err(Error::new(
                         kv.key.span(),

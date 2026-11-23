@@ -1,33 +1,30 @@
-use aide::axum::routing::{get, post};
+use aide::axum::routing::{get_with as get,  post_with as post};
 use autoendpoint::endpoints;
 use axum::extract::{Json, Path};
 use sqlx::PgPool;
 
 use crate::{
-    entities::{session::Session, user::User},
-    features::{
-        auth::{ChangePasswordDto, SessionDto, SigninDto, SignupDto},
-        user::service::{SqlxUserService, UserService},
-    },
-    with,
+    entities::{session::Session, user::User}, extract::WithRejection, features::{
+        auth::{ChangePasswordDto, SessionDto, SigninDto, SignupDto, jwt::JwtAuthState}, user::service::{SqlxUserService, UserService},
+    }, with,
 };
 
 type Unit = ();
 
-#[endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get)]
+#[endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get, tag="auth")]
 #[async_trait::async_trait]
 pub trait AuthService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Json::<User>, path="/signup", method=post)]
-    async fn signup(&self, #[extract(Json)] dto: SignupDto) -> crate::Result<User>;
+    async fn signup(&self, #[extract(WithRejection<Json>)] dto: SignupDto) -> crate::Result<User>;
 
     #[endpoint(ok=Json::<SessionDto>, path="/login", method=post)]
-    async fn login(&self, #[extract(Json)] dto: SigninDto) -> crate::Result<SessionDto>;
+    async fn login(&self, #[extract(WithRejection<Json>)] dto: SigninDto) -> crate::Result<SessionDto>;
 
     #[endpoint(ok=Unit,method=post)]
     async fn change_password(
         &self,
         #[extract(Path)] id: i32,
-        #[extract(Json)] dto: ChangePasswordDto,
+        #[extract(WithRejection<Json>)] dto: ChangePasswordDto,
     ) -> crate::Result<()>;
 
     async fn logout(&self, session_id: i32) -> crate::Result<()>;
@@ -37,11 +34,12 @@ pub trait AuthService: Clone + Send + Sync + 'static {
 pub struct SqlxAuthService {
     pool: PgPool,
     user_service: SqlxUserService,
+    jwt_state: JwtAuthState,
     cost: u32,
 }
 
 impl SqlxAuthService {
-    pub fn new(pool: PgPool, user_service: SqlxUserService) -> Self {
+    pub fn new(pool: PgPool, user_service: SqlxUserService, jwt_state: JwtAuthState) -> Self {
         Self {
             pool,
             user_service,
@@ -49,6 +47,7 @@ impl SqlxAuthService {
             cost: 4,
             #[cfg(not(debug_assertions))]
             cost: 12,
+            jwt_state
         }
     }
 }
@@ -100,18 +99,23 @@ impl AuthService for SqlxAuthService {
             .get_by_username_or_email(dto.identity)
             .await?;
         user.check_password(dto.password)?;
+        let token = self.jwt_state.generate_token(user.id.unwrap(), 6000)?;
         let session = sqlx::query_as!(
             Session,
             r#"
+            WITH inserted AS (
+                INSERT INTO sessions (user_id, auth_token)
+                VALUES ($1, $2)
+                RETURNING sessions.user_id, sessions.auth_token, sessions.id
+            )
             SELECT
-                "user"       AS "user!",
-                auth_token   AS "auth_token!",
-                id           AS "id!"
-            FROM write_session($1, $2, $3)
+                inserted.user_id AS "user",
+                inserted.auth_token,
+                inserted.id
+            FROM inserted
             "#,
-            crate::ACTOR_ID,
             user.id,
-            "xxxx-not-implemented"
+            token
         )
         .fetch_one(&self.pool)
         .await?;

@@ -1,25 +1,38 @@
-
+use aide::OperationInput;
 use aide::axum::ApiRouter;
+use aide::axum::routing::get;
 use aide::openapi::{Info, OpenApi};
-use aide::swagger::Swagger;
+use aide::scalar::Scalar;
+use aide::transform::TransformOpenApi;
+use app::extract::WithRejection;
+use app::features::auth::UserId;
+use app::features::user::service::UserService;
 use app::{
-    AppState, config::AppConfig, features::{
-        auth::service::{AuthServiceEndpoints, SqlxAuthService}, category::service::{CategoryServiceEndpoints, SqlxCategoryService}, discussion::service::{DiscussionServiceEndpoints, SqlxDiscussionService}, project::service::{ProjectServiceEndpoints, SqlxProjectService}, status::service::{SqlxStatusService, StatusServiceEndpoints}, task::service::{SqlxTaskService, TaskServiceEndpoints}, user::service::{SqlxUserService, UserServiceEndpoints},
+    AppState,
+    config::AppConfig,
+    features::{
+        auth::service::{AuthServiceEndpoints, SqlxAuthService},
+        category::service::{CategoryServiceEndpoints, SqlxCategoryService},
+        discussion::service::{DiscussionServiceEndpoints, SqlxDiscussionService},
+        project::service::{ProjectServiceEndpoints, SqlxProjectService},
+        status::service::{SqlxStatusService, StatusServiceEndpoints},
+        task::service::{SqlxTaskService, TaskServiceEndpoints},
+        user::service::{SqlxUserService, UserServiceEndpoints},
     },
 };
-use axum::routing::get;
+use axum::extract::State;
+use axum::response::Html;
 use axum::{Extension, Json};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithTonicConfig;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use tonic::transport::ClientTlsConfig;
 use tower_http::trace::TraceLayer;
 use tracing::instrument::WithSubscriber;
 
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_sdk::{
-    logs::SdkLoggerProvider,
-    trace::SdkTracerProvider,
-};
+use opentelemetry_sdk::{logs::SdkLoggerProvider, trace::SdkTracerProvider};
 use tracing_opentelemetry::OpenTelemetryLayer;
 
 fn setup_tracing() {
@@ -74,6 +87,18 @@ async fn serve_api(Extension(api): Extension<OpenApi>) -> Json<OpenApi> {
     Json(api)
 }
 
+fn add_security(api: TransformOpenApi) -> TransformOpenApi {
+    api.security_scheme(
+        "bearerAuth",
+        aide::openapi::SecurityScheme::Http {
+            scheme: "bearer".into(),
+            bearer_format: Some("JWT".into()),
+            description: Some("JWT Token".into()),
+            extensions: Default::default(),
+        },
+    )
+}
+
 #[tokio::main]
 async fn main() {
     let config: AppConfig = envy::from_env().unwrap();
@@ -95,6 +120,8 @@ async fn main() {
         },
         ..Default::default()
     };
+    let transform = TransformOpenApi::new(&mut api);
+    let _ = add_security(transform);
 
     let app = ApiRouter::new()
         .merge(app::features::maintenance::routes())
@@ -114,21 +141,25 @@ async fn main() {
             "/status",
             StatusServiceEndpoints::<SqlxStatusService>::routes(),
         )
-        .nest(
-            "/auth",
-            AuthServiceEndpoints::<SqlxAuthService>::routes(),
-        )
-        .nest(
-            "/user",
-            UserServiceEndpoints::<SqlxUserService>::routes()
-        )
+        .nest("/auth", AuthServiceEndpoints::<SqlxAuthService>::routes())
+        .nest("/user", UserServiceEndpoints::<SqlxUserService>::routes())
         .nest("/task", TaskServiceEndpoints::<SqlxTaskService>::routes())
+        .api_route("/index", get(index))
         .route("/api.json", get(serve_api))
-        .route("/docs", Swagger::new("/api.json").axum_route())
+        .route("/docs", Scalar::new("/api.json").axum_route())
         .layer(TraceLayer::new_for_http())
         .finish_api(&mut api)
         .layer(Extension(api))
+        .nest("/reports", app::features::reports::routes())
         .with_state(state);
 
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn index(State(app): State<AppState>, user: UserId) -> Html<String> {
+    if let Ok(user) = app.user.get_by_id(user.user_id).await {
+        Html(format!("Hello, <i>{} {}</i>", user.first_name(), user.second_name()))
+    } else {
+        Html(format!("No such user!"))
+    }
 }

@@ -4,4 +4,5 @@ use serde::Deserialize;
 pub struct AppConfig {
     pub app_db_uri: String,
     pub port: String,
+    pub jwt_secret: Option<String>
 }

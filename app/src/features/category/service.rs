@@ -1,12 +1,12 @@
 use super::{CreateCategoryDto, UpdateCategoryDto};
-use crate::entities::{Page, PageRequest, category::Category};
+use crate::{entities::{Page, PageRequest, category::Category}, extract::WithRejection};
 use axum::extract::{Json, Path, Query};
 use sqlx::PgPool;
-use aide::axum::routing::{get,post, delete};
+use aide::axum::routing::{get_with as get,post_with as post, delete_with as delete};
 
 type Unit = ();
 
-#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get)]
+#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter, method=get, tag="category")]
 #[async_trait::async_trait]
 pub trait CategoryService: Send + Sync + Clone + 'static {
     #[endpoint(ok=Json::<Category>,path="/{id}")]
@@ -21,14 +21,14 @@ pub trait CategoryService: Send + Sync + Clone + 'static {
     #[endpoint(ok=Json::<Category>,method=post,path="/")]
     async fn create_category(
         &self,
-        #[extract(Json)] body: CreateCategoryDto,
+        #[extract(WithRejection<Json>)] body: CreateCategoryDto,
     ) -> crate::Result<Category>;
 
     #[endpoint(ok=Json::<Category>,method=post,path="/{id}")]
     async fn update_category(
         &self,
         #[extract(Path)] id: i32,
-        #[extract(Json)] body: UpdateCategoryDto,
+        #[extract(WithRejection<Json>)] body: UpdateCategoryDto,
     ) -> crate::Result<Category>;
 
     #[endpoint(ok=Unit,method=delete,path="/{id}")]

@@ -5,9 +5,10 @@ use crate::entities::PageRequest;
 use crate::entities::ProjectRole;
 use crate::entities::project::Project;
 use crate::entities::task::Task;
+use crate::extract::WithRejection;
 use crate::features::project::AddMemberDro;
 use crate::features::project::RemoveMemberDto;
-use aide::axum::routing::{get,delete,post};
+use aide::axum::routing::{get_with as get,delete_with as delete,post_with as post};
 use axum::extract::{Json, Path, Query};
 use chrono::DateTime;
 use sqlx::PgExecutor;
@@ -15,7 +16,7 @@ use sqlx::PgPool;
 
 type Unit = ();
 
-#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter,method=get)]
+#[autoendpoint::endpoints(error=crate::HttpError, router=aide::axum::ApiRouter,method=get, tag="project")]
 #[async_trait::async_trait]
 pub trait ProjectService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Json::<Project>,path="/{id}")]
@@ -37,21 +38,21 @@ pub trait ProjectService: Clone + Send + Sync + 'static {
     #[endpoint(ok=Json::<Project>,path="/",method=post)]
     async fn create_project(
         &self,
-        #[extract(Json)] body: CreateProjectDto,
+        #[extract(WithRejection<Json>)] body: CreateProjectDto,
     ) -> crate::Result<Project>;
 
     #[endpoint(ok=Json::<Project>,path="/{id}",method=post)]
     async fn update_project(
         &self,
         #[extract(Path)] id: i32,
-        #[extract(Json)] body: UpdateProjectDto,
+        #[extract(WithRejection<Json>)] body: UpdateProjectDto,
     ) -> crate::Result<Project>;
 
     #[endpoint(ok=Unit,path="/{id}/member",method=post)]
     async fn add_member(
         &self,
         #[extract(Path)] id: i32,
-        #[extract(Json)] member: AddMemberDro,
+        #[extract(WithRejection<Json>)] member: AddMemberDro,
     ) -> crate::Result<()>;
 
     #[endpoint(ok=Unit,path="/{id}",method=delete)]
@@ -90,7 +91,7 @@ impl ProjectService for SqlxProjectService {
                     description,
                     deadline        AS "deadline!",
                     status          AS "status!",
-                    assignee AS "assignee?",
+                    assignee,
                     estimated_time  AS "estimated_time!"
                 FROM read_project_tasks($1, $2)
             "#,

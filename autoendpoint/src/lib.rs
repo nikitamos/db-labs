@@ -1,10 +1,11 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, option};
 
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::quote;
+use quote::{ToTokens, format_ident, quote};
 use syn::{
-    Attribute, Error, FnArg, ItemTrait, LitStr, Meta, Pat, ReceiverKind, TraitItemFn, Type,
-    parse_macro_input, parse_quote, spanned::Spanned,
+    AngleBracketedGenericArguments, Attribute, Error, FnArg, ItemTrait, LitStr, Meta, Pat, Path,
+    PathSegment, ReceiverKind, Token, TraitItemFn, Type, TypePath, parse_macro_input, parse_quote,
+    punctuated::Punctuated, spanned::Spanned,
 };
 
 mod opts;
@@ -121,7 +122,6 @@ fn process_fn(
     // TODO: is it a valid way to skip receiver?
     for arg in fn_item.sig.inputs.iter_mut().skip(1) {
         let FnArg::Typed(arg) = arg else {
-            println!("Receiver");
             continue;
         };
         let extractor: Type = extract_attribute(&mut arg.attrs, "extract")
@@ -132,7 +132,7 @@ fn process_fn(
                 )
             })?
             .parse_args()?;
-        endpoint_args.push(make_endpoint_arg(&arg.pat, &arg.ty, extractor));
+        endpoint_args.push(make_endpoint_arg(&arg.pat, &arg.ty, extractor)?);
         match arg.pat.as_ref() {
             Pat::Ident(pat_ident) => endpoint_arg_names.push(pat_ident.ident.clone()),
             _ => return Err(Error::new(arg.pat.span(), "unsupported pattern")),
@@ -145,7 +145,7 @@ fn process_fn(
         method,
         path,
         ..
-    } = options;
+    } = &options;
     let t_await = if fn_item.sig.asyncness.is_some() {
         quote! {.await}
     } else {
@@ -165,8 +165,9 @@ fn process_fn(
         }
     };
     let route = if is_api_router {
+        let refiner = refine_route(&options);
         quote! {
-            .api_route(#path, #method(Self::#fn_name))
+            .api_route(#path, #method(Self::#fn_name, #refiner))
         }
     } else {
         quote! {
@@ -178,6 +179,18 @@ fn process_fn(
         handler: body,
         route,
     }))
+}
+
+fn refine_route(options: &EndpointOptions) -> Option<TokenStream> {
+    if let Some(tag) = &options.tag {
+        Some(quote! {
+            |x| {
+                x.tag(#tag)
+            }
+        })
+    } else {
+        None
+    }
 }
 
 /// If present, removes attribute with given name from the vector and returns it
@@ -195,8 +208,96 @@ fn extract_attribute(attributes: &mut Vec<Attribute>, attr_name: &str) -> Option
         .map(|i| attributes.remove(i))
 }
 
-fn make_endpoint_arg(ident: &Pat, ty: &Type, extractor: Type) -> TokenStream {
-    quote! {
-        #extractor(#ident): #extractor<#ty>
+fn make_endpoint_arg(ident: &Pat, typ: &Type, extractor: Type) -> syn::Result<TokenStream> {
+    let ExtractorTree {
+        extractor_type,
+        extracted_pat,
+    } = extract(&extractor, ExtractionParams { ident, typ })?;
+    let res = quote! {
+        #extracted_pat: #extractor_type
+    };
+    println!("&&RES: {}", res);
+    Ok(res)
+}
+
+struct ExtractionParams<'a> {
+    /// Identifier of the extracted variable
+    ident: &'a Pat,
+    /// Expected type of the extracted variable
+    typ: &'a Type,
+}
+
+struct ExtractorTree {
+    extractor_type: TokenStream,
+    extracted_pat: TokenStream,
+}
+
+fn extract(extractor: &Type, params: ExtractionParams) -> syn::Result<ExtractorTree> {
+    println!("&&EXTRACT");
+    match extractor {
+        Type::Path(type_path) => match type_path.path.segments.last().unwrap().arguments {
+            syn::PathArguments::AngleBracketed(ref args) => {
+                if args.args.len() == 1 {
+                    match &args.args[0] {
+                        syn::GenericArgument::Type(ty) => wrap_into(extractor, extract(ty, params)?),
+                        arg @ _ => Err(syn::Error::new(
+                            arg.span(),
+                            "Generic parameters must be types",
+                        )),
+                    }
+                } else {
+                    Err(syn::Error::new(
+                        args.span(),
+                        "Generics are allowed to have only one parameter",
+                    ))
+                }
+            }
+            syn::PathArguments::None => wrap_into(
+                extractor,
+                ExtractorTree {
+                    extractor_type: params.typ.into_token_stream(),
+                    extracted_pat: params.ident.into_token_stream(),
+                },
+            ),
+            ref args @ _ => Err(syn::Error::new(args.span(), "Unsupported path arguments")),
+        },
+        ty @ _ => Err(syn::Error::new(ty.span(), "Extractor type must be a path")),
+    }
+}
+
+fn wrap_into(ty: &Type, tree: ExtractorTree) -> Result<ExtractorTree, Error> {
+    let ExtractorTree {
+        extractor_type,
+        extracted_pat,
+    } = tree;
+
+    let ty_path = skip_generics(ty);
+    // TODO: skip generics
+
+    Ok(ExtractorTree {
+        extractor_type: quote! {#ty_path::<#extractor_type>},
+        extracted_pat: quote! {#ty_path(#extracted_pat)},
+    })
+}
+
+fn skip_generics(ty: &Type) -> TokenStream {
+    match ty {
+        Type::Path(type_path) => {
+            let idents = type_path.path.segments.iter().map(|seg| PathSegment {
+                ident: seg.ident.clone(),
+                arguments: syn::PathArguments::None,
+            });
+            let segments = Punctuated::<_, Token![::]>::from_iter(idents);
+            let path = TypePath {
+                attrs: type_path.attrs.clone(),
+                qself: type_path.qself.clone(),
+                path: Path {
+                    leading_colon: type_path.path.leading_colon,
+                    segments,
+                },
+            };
+            path.into_token_stream()
+        }
+        _ => ty.into_token_stream(),
     }
 }

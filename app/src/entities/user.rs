@@ -31,4 +31,16 @@ impl User {
         self.password_hash = Some(bcrypt::hash(new_password.as_ref(), 12)?);
         Ok(self.password_hash.as_ref().unwrap())
     }
+    
+    pub fn email(&self) -> &str {
+        &self.email
+    }
+    
+    pub fn first_name(&self) -> &str {
+        &self.first_name
+    }
+    
+    pub fn second_name(&self) -> &str {
+        &self.second_name
+    }
 }

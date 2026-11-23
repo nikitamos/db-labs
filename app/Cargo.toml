@@ -35,12 +35,19 @@ opentelemetry-otlp = { version = "0.33.1", features = [
     "default",
     "grpc-tonic",
     "tls-ring",
-    "tokio"
+    "tokio",
 ] }
 opentelemetry = { version = "0.33.1", default-features = false, features = [
     "trace",
 ] }
 tonic = { version = "0.14.6", features = ["tls-native-roots"] }
 opentelemetry-appender-tracing = "0.33.1"
-aide = { version = "0.15.1", features = ["axum", "axum-json", "axum-query", "swagger"] }
+aide = { version = "0.15.1", features = [
+    "axum",
+    "axum-json",
+    "axum-query",
+    "scalar",
+] }
 schemars = { version = "0.9", features = ["chrono04"] }
+jsonwebtoken = { version = "12.0.0", features = ["rust_crypto"] }
+indexmap = "2.14.2"
